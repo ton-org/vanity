@@ -1,0 +1,32 @@
+{
+    "name": "vanity",
+    "version": "0.0.1",
+    "scripts": {
+        "bp": "blueprint",
+        "start": "blueprint run",
+        "build": "blueprint build",
+        "test": "jest --verbose",
+        "release": "blueprint pack && npm publish --access public"
+    },
+    "dependencies": {
+        "@ton/core": "~0"
+    },
+    "devDependencies": {
+        "@ton/blueprint": ">=0.40.0",
+        "@ton/sandbox": ">=0.37.0",
+        "@ton/test-utils": ">=0.11.0",
+        "@types/jest": "^30.0.0",
+        "@types/node": "^22.17.2",
+        "jest": "^30.0.5",
+        "prettier": "^3.6.2",
+        "@ton/ton": ">=15.3.1 <16.0.0",
+        "@ton/crypto": "^3.3.0",
+        "ts-jest": "^29.4.1",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.9.2",
+        "@ton/tolk-js": ">=1.0.0",
+        "@tact-lang/compiler": ">=1.6.13 <2.0.0",
+        "@ton-community/func-js": ">=0.10.0"
+    },
+    "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+}

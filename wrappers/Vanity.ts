@@ -1,29 +1,57 @@
-import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Sender, SendMode } from '@ton/core';
+import {
+    Address,
+    beginCell,
+    Cell,
+    Contract,
+    contractAddress,
+    ContractProvider,
+    Sender,
+    SendMode,
+    StateInit,
+} from '@ton/core';
 
-export type VanityConfig = {};
-
-export function vanityConfigToCell(config: VanityConfig): Cell {
-    return beginCell().endCell();
-}
+export type VanityConfig = {
+    owner: Address;
+    salt: Buffer;
+    fixedPrefixLength: number | undefined;
+    special: number | undefined;
+};
 
 export class Vanity implements Contract {
-    constructor(readonly address: Address, readonly init?: { code: Cell; data: Cell }) {}
+    constructor(
+        readonly address: Address,
+        readonly init?: StateInit,
+    ) {}
 
     static createFromAddress(address: Address) {
         return new Vanity(address);
     }
 
-    static createFromConfig(config: VanityConfig, code: Cell, workchain = 0) {
-        const data = vanityConfigToCell(config);
-        const init = { code, data };
+    static createFromConfig(config: VanityConfig, workchain = 0) {
+        const code = buildCodeCell(config);
+        const init: StateInit = { code, data: null };
         return new Vanity(contractAddress(workchain, init), init);
     }
 
-    async sendDeploy(provider: ContractProvider, via: Sender, value: bigint) {
-        await provider.internal(via, {
-            value,
-            sendMode: SendMode.PAY_GAS_SEPARATELY,
-            body: beginCell().endCell(),
-        });
+    static createFromJsonl(address: Address, init: StateInit) {
+        return new Vanity(address, init);
     }
+}
+
+const CONST1 = 1065632427291681n; // 50 bits
+const CONST2 = 457587318777827214152676959512820176586892797206855680n; // 179 bits
+
+function buildCodeCell(config: VanityConfig): Cell {
+    const { owner, salt } = config;
+    if (salt.length !== 16) {
+        throw new Error('Salt must be exactly 16 bytes');
+    }
+
+    const builder = beginCell();
+    builder.storeUint(CONST1, 50);
+    builder.storeAddress(owner); // tag, anycast, workchain, addr hash
+    builder.storeUint(CONST2, 179);
+    builder.storeBuffer(salt);
+
+    return builder.endCell();
 }

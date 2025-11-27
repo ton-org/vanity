@@ -1,0 +1,70 @@
+[
+    {
+        "title": "ton-community/vanity-contract",
+        "timestamp": 1735407120.0,
+        "cases": [
+            {
+                "name": "end 4 ci",
+                "hits": 20,
+                "seconds": 20.0,
+                "rate": 1.0,
+                "timedOut": true
+            },
+            {
+                "name": "end 4 cs",
+                "hits": 21,
+                "seconds": 20.0,
+                "rate": 1.05,
+                "timedOut": true
+            },
+            {
+                "name": "start 4 ci",
+                "hits": 24,
+                "seconds": 20.0,
+                "rate": 1.2,
+                "timedOut": true
+            },
+            {
+                "name": "start 4 cs",
+                "hits": 29,
+                "seconds": 20.0,
+                "rate": 1.45,
+                "timedOut": true
+            }
+        ]
+    },
+    {
+        "title": "ton-org/vanity",
+        "timestamp": 1764229031.557,
+        "cases": [
+            {
+                "name": "start 5 cs",
+                "hits": 1376,
+                "seconds": 19.616368055343628,
+                "rate": 70.09452494573485,
+                "timedOut": true
+            },
+            {
+                "name": "start 5 ci",
+                "hits": 5361,
+                "seconds": 19.657476663589478,
+                "rate": 272.66978828101827,
+                "timedOut": true
+            },
+            {
+                "name": "end 4 cs",
+                "hits": 1022,
+                "seconds": 18.8619327545166,
+                "rate": 54.13018980016857,
+                "timedOut": true
+            },
+            {
+                "name": "end 4 ci",
+                "hits": 12755,
+                "seconds": 18.612507343292236,
+                "rate": 685.2381446928705,
+                "timedOut": true
+            }
+        ]
+    }
+]

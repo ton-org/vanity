@@ -1,0 +1,19 @@
+"Asm.fif" include
+<{
+    11 THROWIF
+    INMSG_SRC
+    x{FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF_} PUSHSLICE
+    SDEQ 801 THROWIFNOT
+    LDREF LDREF DROP c4 POP SETCODE
+    RET
+    x{0000000000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF} s,
+}>s
+
+dup sbitrefs swap "Bits: " type . cr "Refs: " type . cr cr
+
+50 u@+ swap "50-bit constant: 0x" type x. cr
+3 u@+ nip 8 i@+ 256 u@+ -rot 5 smca>$ "Owner: " type type cr
+179 u@+ swap "179-bit constant: 0x" type x. cr
+16 B@+ swap "Salt: 0x" type Bx. cr
+
+sbitrefs + 0= not abort"slice is not empty"

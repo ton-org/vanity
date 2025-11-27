@@ -1,26 +1,26 @@
-# vanity
+# TON Vanity
 
-## Project structure
+## Quickstart
 
--   `contracts` - source code of all the smart contracts of the project and their dependencies.
--   `wrappers` - wrapper classes (implementing `Contract` from ton-core) for the contracts, including any [de]serialization primitives and compilation functions.
--   `tests` - tests for the contracts.
--   `scripts` - scripts used by the project, mainly the deployment scripts.
+Just clone the repository and run `src/generator.py`:
 
-## How to use
+```bash
+git clone https://github.com/ton-org/vanity
+cd vanity
+python3 src/generator.py --owner UQBKgXCNLPexWhs2L79kiARR1phGH1LwXxRbNsCFF9doczSI --end ABCDEF
+```
 
-### Build
+You will see logs like this:
 
-`npx blueprint build` or `yarn blueprint build`
+```text
+Using device: Apple M2 Max
+Found 1, 789.96M iters/s
+Found 1, 817.28M iters/s
+Found 1, 824.88M iters/s
+Found 2, 829.53M iters/s
+Found 3, 831.91M iters/s
+Found 3, 833.50M iters/s
+Found 6, 834.50M iters/s
+```
 
-### Test
-
-`npx blueprint test` or `yarn blueprint test`
-
-### Deploy or run another script
-
-`npx blueprint run` or `yarn blueprint run`
-
-### Add a new contract
-
-`npx blueprint create ContractName` or `yarn blueprint create ContractName`
+You can stop it at any moment, and all the found addresses will be stored in `addresses.jsonl` file.

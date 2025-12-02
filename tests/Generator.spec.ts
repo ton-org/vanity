@@ -20,6 +20,28 @@ type Scenario = {
 const OWNER = 'EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c';
 const FLAG_SETS: Flags[] = ['default', 'nb', 'testnet', 'both'];
 const MASTERCHAIN_VARIANTS = [false, true];
+type PythonCmd = { exe: string; args: string[] };
+
+const resolvePython = (): PythonCmd => {
+    const candidates =
+        process.platform === 'win32'
+            ? ['py', 'py -3', 'python3', 'python']
+            : ['python3', 'python'];
+    for (const cmd of candidates) {
+        const [exe, ...args] = cmd.split(' ');
+        try {
+            const res = spawnSync(exe, [...args, '-c', 'print("ok")'], { encoding: 'utf8' });
+            if (!res.error && res.status === 0 && res.stdout.trim() === 'ok') {
+                return { exe, args };
+            }
+        } catch {
+            /* ignore */
+        }
+    }
+    throw new Error('No usable python interpreter found (tried py, py -3, python3, python)');
+};
+
+const PYTHON = resolvePython();
 
 function gpuAvailable(): boolean {
     const probe = `
@@ -35,7 +57,7 @@ try:
 except Exception:
     print("0")
 `;
-    const res = spawnSync('python3', ['-c', probe], { cwd: 'src', encoding: 'utf8' });
+    const res = spawnSync(PYTHON.exe, [...PYTHON.args, '-c', probe], { cwd: 'src', encoding: 'utf8' });
     return res.status === 0 && res.stdout.trim() === '1';
 }
 
@@ -69,7 +91,7 @@ cfg, sdb = build_kernel_config(cli, owner_raw)
 print(json.dumps({"start_digit_base": sdb}))
 `;
 
-    const res = spawnSync('python3', ['-c', script], { cwd: 'src', encoding: 'utf8' });
+    const res = spawnSync(PYTHON.exe, [...PYTHON.args, '-c', script], { cwd: 'src', encoding: 'utf8' });
     if (res.status !== 0) {
         throw new Error(res.stderr || res.stdout || `python exited ${res.status}`);
     }
@@ -91,7 +113,7 @@ function runGeneratorGpu(s: Scenario) {
     if (['testnet', 'both'].includes(s.flags)) args.push('-t');
     if (s.masterchain) args.push('--masterchain');
 
-    const res = spawnSync('python3', args, { cwd: tmp, encoding: 'utf8', timeout: 240_000 });
+    const res = spawnSync(PYTHON.exe, [...PYTHON.args, ...args], { cwd: tmp, encoding: 'utf8', timeout: 240_000 });
     try {
         if (res.status !== 0) {
             throw new Error(res.stderr || res.stdout || `generator.py failed (${res.status})`);

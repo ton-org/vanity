@@ -1127,7 +1127,12 @@ def reporter_thread(ctx: SearchContext):
                 return f"{m}m{s:02d}s"
             return f"{sec:.1f}s"
 
-        if snap.found == 0 and (time.time() - start_time) >= 1.0 and eff_avg > 0 and hit_prob > 0:
+        if (
+            snap.found == 0
+            and (time.time() - start_time) >= 1.0
+            and eff_avg > 0
+            and hit_prob > 0
+        ):
             expected_trials = 1.0 / hit_prob
             remaining_trials = max(0.0, expected_trials - total_iters)
             eta_seconds = remaining_trials / eff_avg if eff_avg > 0 else None

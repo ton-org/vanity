@@ -121,15 +121,21 @@ const chooseBenchCases = (names: string[]): BenchCase[] => {
     ];
 };
 
-const detectedDevicesAll = detectDevices();
-const detectedDevices = benchDeviceIds
+const normalizeDeviceName = (name: string) =>
+    name
+        .replace(/[\u0000-\u001f\u007f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+const detectedDevicesAll = detectDevices().map(normalizeDeviceName).filter(Boolean);
+const selectedDevices = benchDeviceIds
     ? benchDeviceIds
           .map((i) => detectedDevicesAll[i])
           .filter((n): n is string => typeof n === 'string' && n.length > 0)
     : detectedDevicesAll;
 
 const benchCases: BenchCase[] = (() => {
-    const selected = chooseBenchCases(detectedDevices.length ? detectedDevices : [DEFAULT_DEVICE]);
+    const selected = chooseBenchCases(selectedDevices.length ? selectedDevices : [DEFAULT_DEVICE]);
     if (selected.length) return selected;
     return [
         { name: 'start 5 cs', start: 'WERTY', caseSensitive: true },
@@ -138,7 +144,7 @@ const benchCases: BenchCase[] = (() => {
         { name: 'end 4 ci', end: 'WeRt', caseSensitive: false },
     ];
 })();
-const deviceNames = new Set<string>(detectedDevices);
+const deviceNames = new Set<string>();
 
 function gpuAvailable(): boolean {
     const probe = `
@@ -187,7 +193,7 @@ async function runBenchCase(testCase: BenchCase, timeoutMs: number): Promise<Ben
         for (const line of text.split(/\r?\n/)) {
             const m = line.match(/Using device:\s*(.+)/i);
             if (m && m[1]) {
-                const cleaned = m[1].replace(/^\[\d+\]\s*/, '').trim();
+                const cleaned = normalizeDeviceName(m[1].replace(/^\[\d+\]\s*/, ''));
                 deviceNames.add(cleaned || DEFAULT_DEVICE);
             }
         }
@@ -369,12 +375,17 @@ const gpuOk = gpuAvailable();
 
     afterAll(() => {
         if (!results.length) return;
+        const effectiveDevices =
+            deviceNames.size > 0
+                ? [...deviceNames]
+                : selectedDevices.length
+                  ? selectedDevices
+                  : detectedDevicesAll.length
+                    ? detectedDevicesAll
+                    : [DEFAULT_DEVICE];
         const resolvedDeviceName =
-            deviceNames.size === 1
-                ? [...deviceNames][0]
-                : deviceNames.size > 1
-                  ? [...deviceNames].join(' + ')
-                  : DEFAULT_DEVICE;
+            effectiveDevices.length === 1 ? effectiveDevices[0] : effectiveDevices.join(' + ');
+
         const resultsMap = readResultsMap();
         const priorEntries: BenchEntry[] = resultsMap[resolvedDeviceName] ?? [];
         const baseline = priorEntries.length ? priorEntries[priorEntries.length - 1] : null;

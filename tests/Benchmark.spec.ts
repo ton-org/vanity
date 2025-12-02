@@ -39,6 +39,29 @@ let benchDevices: string | null = null; // forwarded to generator --devices
 })();
 const deviceNames = new Set<string>();
 
+type PythonCmd = { exe: string; args: string[] };
+
+const resolvePython = (): PythonCmd => {
+    const candidates =
+        process.platform === 'win32'
+            ? ['py', 'py -3', 'python3', 'python']
+            : ['python3', 'python'];
+    for (const cmd of candidates) {
+        const [exe, ...args] = cmd.split(' ');
+        try {
+            const res = spawnSync(exe, [...args, '-c', 'print("ok")'], { encoding: 'utf8' });
+            if (!res.error && res.status === 0 && res.stdout.trim() === 'ok') {
+                return { exe, args };
+            }
+        } catch {
+            /* ignore */
+        }
+    }
+    throw new Error('No usable python interpreter found (tried py, py -3, python3, python)');
+};
+
+const PYTHON = resolvePython();
+
 type BenchCase = {
     name: string;
     start?: string;
@@ -60,20 +83,9 @@ try:
 except Exception:
     print("0")
 `;
-    const candidates = process.platform === 'win32' ? [['py', '-3'], ['python'], ['python3']] : [['python3'], ['python']];
-
-    for (const [cmd, ...args] of candidates) {
-        try {
-            const res = spawnSync(cmd, [...args, '-c', probe], { cwd: 'src', encoding: 'utf8' });
-            if (res.status === 0 && res.stdout.trim() === '1') {
-                return true;
-            }
-        } catch {
-            // ignore and try next candidate
-        }
-    }
-
-    console.warn('Skipping benchmarks: no GPU detected via pyopencl (python/py not usable or no OpenCL devices)');
+    const res = spawnSync(PYTHON.exe, [...PYTHON.args, '-c', probe], { cwd: 'src', encoding: 'utf8' });
+    if (res.status === 0 && res.stdout.trim() === '1') return true;
+    console.warn('Skipping benchmarks: no GPU detected via pyopencl (python interpreter or OpenCL missing)');
     return false;
 }
 
@@ -94,7 +106,10 @@ async function runBenchCase(testCase: BenchCase, timeoutMs: number): Promise<Ben
     // intentionally NOT passing --only-one; we will time-limit instead
 
     let timedOut = false;
-    const child = spawn('python3', args, { cwd: tmp, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(PYTHON.exe, [...PYTHON.args, ...args], {
+        cwd: tmp,
+        stdio: ['ignore', 'pipe', 'pipe'],
+    });
 
     const parseDevices = (chunk: Buffer | string) => {
         const text = chunk.toString();

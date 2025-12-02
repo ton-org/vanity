@@ -228,17 +228,6 @@ async function runBenchCase(testCase: BenchCase, timeoutMs: number): Promise<Ben
     return { name: testCase.name, hits, seconds, rate, timedOut };
 }
 
-const benchCases: BenchCase[] = (() => {
-    const selected = chooseBenchCases(detectedDevices.length ? detectedDevices : [DEFAULT_DEVICE]);
-    if (selected.length) return selected;
-    return [
-        { name: 'start 5 cs', start: 'WERTY', caseSensitive: true },
-        { name: 'start 5 ci', start: 'WeRtY', caseSensitive: false },
-        { name: 'end 4 cs', end: 'WERT', caseSensitive: true },
-        { name: 'end 4 ci', end: 'WeRt', caseSensitive: false },
-    ];
-})();
-
 const gpuOk = gpuAvailable();
 
 (gpuOk ? describe : describe.skip)('vanity benchmark (~20s per case)', () => {

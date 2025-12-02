@@ -32,16 +32,5 @@ jobs:
                   curl -LsSf https://astral.sh/uv/install.sh | sh
                   echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-            - name: Check formatting
-              run: npm run format:check
-
-            - name: Type check
-              run: npm run typecheck
-
-            - name: Kernel render sanity
-              run: npm run check:kernel
-
-            # Note: GPU/benchmark tests are skipped on CI (no OpenCL)
-            # Jest unit tests (non-benchmark) still run:
-            - name: Unit tests
-              run: npm test
+            - name: CI
+              run: npm run ci

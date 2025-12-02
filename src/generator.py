@@ -48,6 +48,7 @@ class CliConfig:
     testnet: bool
     case_sensitive: bool
     only_one: bool
+    device_ids: Optional[List[int]] = None
 
 
 @dataclass
@@ -1201,6 +1202,12 @@ def parse_cli() -> CliConfig:
         action="store_true",
         help="Stop after the first matching address is found",
     )
+    parser.add_argument(
+        "--devices",
+        type=str,
+        default=None,
+        help="Comma-separated OpenCL device ids to use (see device list printed on startup)",
+    )
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -1228,6 +1235,19 @@ def parse_cli() -> CliConfig:
     if args.end and not is_base64url(args.end):
         die("--end must contain only base64url characters")
 
+    device_ids: Optional[List[int]] = None
+    if args.devices:
+        try:
+            device_ids = [
+                int(x.strip()) for x in args.devices.split(",") if x.strip() != ""
+            ]
+        except ValueError:
+            die(
+                "--devices must be a comma-separated list of integers (e.g., --devices 0,2)"
+            )
+        if any(i < 0 for i in device_ids):
+            die("--devices entries must be non-negative")
+
     return CliConfig(
         owner=args.owner,
         start=args.start,
@@ -1237,6 +1257,7 @@ def parse_cli() -> CliConfig:
         testnet=bool(args.testnet),
         case_sensitive=bool(args.case_sensitive),
         only_one=bool(args.only_one),
+        device_ids=device_ids,
     )
 
 
@@ -1253,14 +1274,47 @@ def main():
 
     ctx = SearchContext(kernel_cfg, cli, owner_raw, start_digit_base)
 
-    def attach_devices(devices: List[cl.Device]):
+    all_devices: List[Tuple[int, cl.Platform, cl.Device]] = []
+    for platform in platforms:
+        for dev in platform.get_devices(cl.device_type.ALL):
+            all_devices.append((len(all_devices), platform, dev))
+
+    if not all_devices:
+        die("No OpenCL devices found")
+
+    if len(all_devices) > 1:
+        print(
+            "Multiple OpenCL devices detected. Use --devices <id>[,<id>...] to select specific ones."
+        )
+        print("Available devices:")
+        for idx, platform, dev in all_devices:
+            dev_type = cl.device_type.to_string(dev.type)
+            print(f"  [{idx}] {dev.name} ({dev_type}, platform: {platform.name})")
+
+    selected_indices = set(cli.device_ids) if cli.device_ids else None
+    if selected_indices:
+        available_indices = {idx for idx, _, _ in all_devices}
+        missing = sorted(selected_indices - available_indices)
+        if missing:
+            die(f"--devices ids not found: {', '.join(str(m) for m in missing)}")
+
+    selected_devices: List[Tuple[cl.Platform, cl.Device, int]] = []
+    for idx, platform, dev in all_devices:
+        if selected_indices is None or idx in selected_indices:
+            selected_devices.append((platform, dev, idx))
+
+    platform_map: dict[cl.Platform, List[Tuple[cl.Device, int]]] = {}
+    for platform, dev, idx in selected_devices:
+        platform_map.setdefault(platform, []).append((dev, idx))
+
+    def attach_devices(platform: cl.Platform, devices: List[Tuple[cl.Device, int]]):
         nonlocal devices_used, threads
         if not devices:
             return
-        context = cl.Context(devices=devices)
+        context = cl.Context(devices=[d for d, _ in devices])
         program = cl.Program(context, kernel_src).build()
-        for dev in devices:
-            print(f"Using device: {dev.name}")
+        for dev, idx in devices:
+            print(f"Using device: [{idx}] {dev.name}")
             t = Thread(
                 target=device_thread,
                 args=(dev, context, program, ctx),
@@ -1270,16 +1324,11 @@ def main():
             threads.append(t)
             devices_used.append(dev)
 
-    # Prefer GPUs, but fall back to any OpenCL device if none are available
     for platform in platforms:
-        attach_devices(platform.get_devices(cl.device_type.GPU))
+        attach_devices(platform, platform_map.get(platform, []))
 
     if not devices_used:
-        for platform in platforms:
-            attach_devices(platform.get_devices(cl.device_type.ALL))
-
-    if not devices_used:
-        die("No OpenCL devices found")
+        die("No OpenCL devices matched the selection")
 
     reporter = Thread(target=reporter_thread, args=(ctx,), name="reporter", daemon=True)
     reporter.start()

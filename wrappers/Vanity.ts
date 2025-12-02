@@ -1,14 +1,4 @@
-import {
-    Address,
-    beginCell,
-    Cell,
-    Contract,
-    contractAddress,
-    ContractProvider,
-    Sender,
-    SendMode,
-    StateInit,
-} from '@ton/core';
+import { Address, beginCell, Cell, Contract, contractAddress, StateInit } from '@ton/core';
 
 export type VanityConfig = {
     owner: Address;

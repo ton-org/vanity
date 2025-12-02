@@ -21,7 +21,7 @@ describe('Example', () => {
 
         const found =
             '{"address":"EQD12345QQ0WDEDtlc2hzBX4ME0Dg3WKP0t24f2-bjPCLBZI","init":{"code":"te6ccgEBAQEAUAAAnPJL-JKNCGACNDUWAzY8JUivnwDkKemMr2kqZKRxDW3Z8lTZ-vnjprzHBfLjIdTUMO1U-wTbMAAAAAAAAAAAtLfjazTeo4i83Aq6iVeb1g==","fixedPrefixLength":8,"special":{"tick":false,"tock":false}},"config":{"owner":"EQBGhqLAZseEqRXz4ByFPTGV7SVMlI4hrbs-Sps_Xzx01x8G","start":"12345","end":null,"masterchain":false,"non_bounceable":false,"testnet":false,"case_sensitive":true,"only_one":false},"timestamp":1764681137.069358}';
-        const vanity = blockchain.openContract(Vanity.createFromLine(found));
+        const vanity = Vanity.createFromLine(found);
 
         example = blockchain.openContract(
             vanity.installContract(

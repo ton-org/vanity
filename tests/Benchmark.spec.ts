@@ -308,6 +308,13 @@ const gpuOk = gpuAvailable();
         console.log(`\nDevice: ${deviceLabel}`);
         const rows: Record<string, unknown>[] = [];
 
+        const colLabels: Record<Cat, string> = {
+            'start ci': 'start 5 ci',
+            'start cs': 'start 5 cs',
+            'end ci': 'end 5 ci',
+            'end cs': 'end 5 cs',
+        };
+
         for (let i = 0; i < entries.length; i++) {
             const entry = entries[i];
             const prev = i > 0 ? entries[i - 1] : null;
@@ -323,7 +330,13 @@ const gpuOk = gpuAvailable();
             };
 
             // aggregate best normalized rates per category
-            const best: Record<Cat, number | null> = {
+            const bestVal: Record<Cat, number | null> = {
+                'start ci': null,
+                'start cs': null,
+                'end ci': null,
+                'end cs': null,
+            };
+            const bestLen: Record<Cat, number | null> = {
                 'start ci': null,
                 'start cs': null,
                 'end ci': null,
@@ -336,8 +349,9 @@ const gpuOk = gpuAvailable();
                 const len = parseLength(c.name);
                 const ci = cat.endsWith('ci');
                 const norm = normalizeRate(c.rate, len, ci);
-                if (best[cat] === null || norm > (best[cat] as number)) {
-                    best[cat] = norm;
+                if (bestVal[cat] === null || norm > (bestVal[cat] as number)) {
+                    bestVal[cat] = norm;
+                    bestLen[cat] = len;
                 }
             }
 
@@ -361,9 +375,10 @@ const gpuOk = gpuAvailable();
             }
 
             for (const cat of categories) {
-                const val = best[cat];
+                const key = colLabels[cat];
+                const val = bestVal[cat];
                 if (val === null) {
-                    row[cat] = raw('-');
+                    row[key] = raw('-');
                     continue;
                 }
                 const prevVal = prevBest[cat];
@@ -374,7 +389,7 @@ const gpuOk = gpuAvailable();
                     const valStr = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}% ${arrow}`;
                     delta = pct >= 0 ? color.green(` ${valStr}`) : color.red(` ${valStr}`);
                 }
-                row[cat] = raw(`${val.toFixed(4)}${delta}`);
+                row[key] = raw(`${val.toFixed(4)}${delta}`);
             }
             rows.push(row);
         }

@@ -62,6 +62,13 @@ const renderPivot = (label, entries) => {
     if (!entries.length) return;
     const rows = [];
 
+    const colLabels = {
+        'start ci': 'start 5 ci',
+        'start cs': 'start 5 cs',
+        'end ci': 'end 5 ci',
+        'end cs': 'end 5 cs',
+    };
+
     for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
         const prev = i > 0 ? entries[i - 1] : null;
@@ -82,13 +89,22 @@ const renderPivot = (label, entries) => {
             'end ci': null,
             'end cs': null,
         };
+        const bestLen = {
+            'start ci': null,
+            'start cs': null,
+            'end ci': null,
+            'end cs': null,
+        };
         for (const c of entry.cases) {
             const cat = categorize(c.name);
             if (!cat) continue;
             const len = parseLength(c.name);
             const ci = cat.endsWith('ci');
             const norm = normalizeRate(c.rate, len, ci);
-            if (best[cat] === null || norm > best[cat]) best[cat] = norm;
+            if (best[cat] === null || norm > best[cat]) {
+                best[cat] = norm;
+                bestLen[cat] = len;
+            }
         }
 
         const prevBest = {
@@ -109,9 +125,10 @@ const renderPivot = (label, entries) => {
         }
 
         for (const cat of CATEGORIES) {
+            const key = colLabels[cat];
             const val = best[cat];
             if (val === null) {
-                row[cat] = '-';
+                row[key] = raw('-');
                 continue;
             }
             const prevVal = prevBest[cat];
@@ -122,7 +139,7 @@ const renderPivot = (label, entries) => {
                 const valStr = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}% ${arrow}`;
                 delta = pct >= 0 ? ` \x1b[32m${valStr}\x1b[0m` : ` \x1b[31m${valStr}\x1b[0m`;
             }
-            row[cat] = raw(`${val.toFixed(4)}${delta}`);
+            row[key] = raw(`${val.toFixed(4)}${delta}`);
         }
 
         rows.push(row);

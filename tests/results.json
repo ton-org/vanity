@@ -87,7 +87,7 @@
                     "seconds": 30,
                     "rate": 0.5666666666,
                     "timedOut": true
-                }
+                },
                 {
                     "name": "start 5 ci",
                     "hits": 30,

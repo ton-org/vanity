@@ -47,7 +47,6 @@ try {
 
     const rows = entries.map((entry, idx) => {
         const prev = idx > 0 ? entries[idx - 1] : null;
-        const prevMap = prev ? Object.fromEntries(prev.cases.map((c) => [c.name, c])) : {};
         const dt = new Date(entry.timestamp * 1000);
         const iso = dt.toISOString().slice(0, 10); // YYYY-MM-DD
         const [y, m, d] = iso.split('-');

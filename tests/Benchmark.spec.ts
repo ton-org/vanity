@@ -195,7 +195,7 @@ const gpuOk = gpuAvailable();
         yellow: (s: string) => `\x1b[33m${s}\x1b[0m`,
         dim: (s: string) => `\x1b[2m${s}\x1b[0m`,
     };
-    const raw = (s: string) => ({ ['@@inspect']: () => s });
+    const raw = (s: string) => ({ [Symbol.for('nodejs.util.inspect.custom')]: () => s });
 
     const prob = (length: number, ci: boolean) => {
         const p = ci ? 2 / 64 : 1 / 64;
@@ -234,13 +234,13 @@ const gpuOk = gpuAvailable();
             const entry = entries[i];
             const prev = i > 0 ? entries[i - 1] : null;
 
-            const dt = new Date(entry.timestamp * 1000);
-            const iso = dt.toISOString().slice(0, 10);
-            const [y, m, d] = iso.split('-');
-            const dateStr = `${d}.${m}.${y.slice(2)}`; // DD.MM.YY
+        const dt = new Date(entry.timestamp * 1000);
+        const iso = dt.toISOString().slice(0, 10);
+        const [y, m, d] = iso.split('-');
+        const dateStr = `${d}.${m}.${y.slice(2)}`; // DD.MM.YY
 
             const row: Record<string, unknown> = {
-                run: raw(entry.title),
+                run: raw(String(entry.title)),
                 date: raw(dateStr),
             };
 

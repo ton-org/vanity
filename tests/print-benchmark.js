@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const util = require('util');
 
 const RESULT_FILE = path.resolve(__dirname, 'results.json');
 const DEFAULT_DEVICE_LABEL = 'Unknown device';
@@ -30,8 +29,8 @@ const normalizeRate = (rate, length, ci) => {
     const curProb = prob(length, ci);
     return rate * (refProb / curProb);
 };
+const raw = (s) => ({ [Symbol.for('nodejs.util.inspect.custom')]: () => s });
 
-const raw = (s) => ({ [util.inspect.custom]: () => s });
 
 const argv = process.argv;
 let deviceFilter = null;
@@ -73,7 +72,7 @@ const renderPivot = (label, entries) => {
         const dateStr = `${d}.${m}.${y.slice(2)}`; // DD.MM.YY
 
         const row = {
-            run: raw(entry.title),
+            run: raw(String(entry.title)),
             date: raw(dateStr),
         };
 
@@ -112,7 +111,7 @@ const renderPivot = (label, entries) => {
         for (const cat of CATEGORIES) {
             const val = best[cat];
             if (val === null) {
-                row[cat] = raw('-');
+                row[cat] = '-';
                 continue;
             }
             const prevVal = prevBest[cat];

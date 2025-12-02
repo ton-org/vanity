@@ -1,4 +1,4 @@
-import { Blockchain, internal, printTransactionFees, SandboxContract, TreasuryContract } from '@ton/sandbox';
+import { Blockchain, internal, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import { Address, beginCell, Cell, StateInit, toNano } from '@ton/core';
 import '@ton/test-utils';
 import { AccountStateActive } from '@ton/core/dist/types/AccountState';

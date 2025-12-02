@@ -236,8 +236,19 @@ const gpuOk = gpuAvailable();
         }
 
         // Rebuild StateInit and recompute contract address, compare to reported.
-        const init = hit.init as any;
-        const cfg = hit.config as any;
+        type HitInit = {
+            code: string;
+            fixedPrefixLength?: number;
+            special?: { tick: boolean; tock: boolean } | null;
+        };
+        type HitConfig = {
+            bounceable?: boolean;
+            testnet?: boolean;
+            workchain?: number;
+        };
+
+        const init = hit.init as HitInit;
+        const cfg = hit.config as HitConfig;
         const codeCell = Cell.fromBase64(init.code);
 
         const stateInit: StateInit & { special?: { tick: boolean; tock: boolean } } = {

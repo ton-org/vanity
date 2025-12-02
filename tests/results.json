@@ -1,9 +1,8 @@
 {
-    "MacBook Pro M2 Max": [
+    "Apple M2 Max": [
         {
             "title": "ton-community/vanity-contract",
             "timestamp": 1735407120.0,
-            "device": "MacBook Pro M2 Max",
             "cases": [
                 {
                     "name": "end 4 ci",
@@ -38,7 +37,6 @@
         {
             "title": "ton-org/vanity",
             "timestamp": 1764229031.557,
-            "device": "MacBook Pro M2 Max",
             "cases": [
                 {
                     "name": "start 5 cs",

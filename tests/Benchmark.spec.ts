@@ -17,7 +17,6 @@ type BenchEntry = {
     title: string;
     timestamp: number;
     cases: BenchResult[];
-    device?: string;
 };
 
 type ResultsMap = Record<string, BenchEntry[]>;
@@ -293,7 +292,6 @@ const gpuOk = gpuAvailable();
             title: addTitle || replaceTitle || '(current)',
             timestamp: Date.now() / 1000,
             cases: results,
-            device: resolvedDeviceName,
         };
 
         const toShow = baseline ? [baseline, currentEntry] : [currentEntry];
@@ -323,7 +321,6 @@ const gpuOk = gpuAvailable();
                 title: (addTitle || replaceTitle)!,
                 timestamp: Date.now() / 1000,
                 cases: results,
-                device: resolvedDeviceName,
             };
             let out = priorEntries;
             if (replaceTitle && priorEntries.length) {

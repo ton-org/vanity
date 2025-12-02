@@ -25,6 +25,7 @@ import os
 import struct
 import sys
 import time
+import math
 from dataclasses import dataclass
 from threading import Lock, Thread
 from typing import List, Optional, Sequence, Tuple
@@ -288,6 +289,19 @@ def crc16(data: bytes, table: Sequence[int]) -> int:
     for b in data:
         crc = ((crc << 8) ^ table[((crc >> 8) ^ b) & 0xFF]) & 0xFFFF
     return crc
+
+
+def compute_hit_prob(kernel_cfg: "KernelConfig") -> float:
+    """Probability a single candidate address passes all kernel-side filters."""
+
+    # Bits fixed via byte masks (includes CRC bits when present)
+    bits_fixed = sum(int(b).bit_count() for b in kernel_cfg.prefix_mask)
+    p_mask = 2.0 ** (-bits_fixed)
+
+    # Case-insensitive chars checked via CASE_*: each allows 2 of 64 values.
+    p_ci = (1.0 / 32.0) ** len(kernel_cfg.ci_bitpos)
+
+    return p_mask * p_ci
 
 
 # -----------------------------------------------------------------------------
@@ -843,6 +857,8 @@ class SearchContext:
         self.status_lock = Lock()
         self.output_lock = Lock()
         self.output_file = open("addresses.jsonl", "a", encoding="utf-8")
+        self.hit_prob = compute_hit_prob(kernel_cfg)
+        self.start_time = time.time()
 
 
 def process_hit(
@@ -1081,7 +1097,10 @@ def reporter_thread(ctx: SearchContext):
     while not ctx.stop_flag:
         with ctx.status_lock:
             snap = SearchStats(**ctx.status.__dict__)
-        if ctx.total_iters <= 0:
+            total_iters = ctx.total_iters
+            hit_prob = ctx.hit_prob
+            start_time = ctx.start_time
+        if total_iters <= 0:
             time.sleep(PRINT_INTERVAL)
             continue
 
@@ -1095,9 +1114,34 @@ def reporter_thread(ctx: SearchContext):
         reset = "\x1b[0m"
         fr_part = f" ({found_rate_10s:,.2f}/s)" if found_rate_10s > 1 else ""
         found_color = green if snap.found > 0 else "\x1b[37m"
+        eta_part = ""
+
+        def fmt_duration(sec: float) -> str:
+            if sec >= 3600:
+                h = int(sec // 3600)
+                m = int((sec % 3600) // 60)
+                return f"{h}h{m:02d}m"
+            if sec >= 60:
+                m = int(sec // 60)
+                s = int(sec % 60)
+                return f"{m}m{s:02d}s"
+            return f"{sec:.1f}s"
+
+        if (
+            snap.found == 0
+            and (time.time() - start_time) >= 1.0
+            and eff_avg > 0
+            and hit_prob > 0
+        ):
+            expected_trials = 1.0 / hit_prob
+            remaining_trials = max(0.0, expected_trials - total_iters)
+            eta_seconds = remaining_trials / eff_avg if eff_avg > 0 else None
+            if eta_seconds is not None and math.isfinite(eta_seconds):
+                eta_part = f", ETA {fmt_duration(eta_seconds)}"
+
         msg = (
             f"{found_color}Found {snap.found:,}{reset}{fr_part}, "
-            f"{dim}{cyan}{fmt_rate(eff_avg)} iters/s{reset}"
+            f"{dim}{cyan}{fmt_rate(eff_avg)} iters/s{reset}{eta_part}"
         )
         print(msg, flush=True)
         time.sleep(PRINT_INTERVAL)

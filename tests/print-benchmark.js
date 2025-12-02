@@ -1,7 +1,10 @@
 const fs = require('fs');
 const path = require('path');
+const util = require('util');
 
-const resultFile = path.resolve(__dirname, 'results.json');
+const RESULT_FILE = path.resolve(__dirname, 'results.json');
+const DEFAULT_DEVICE_LABEL = 'Unknown device';
+const CATEGORIES = ['start ci', 'start cs', 'end ci', 'end cs'];
 
 const prob = (length, ci) => {
     const p = ci ? 2 / 64 : 1 / 64;
@@ -28,25 +31,42 @@ const normalizeRate = (rate, length, ci) => {
     return rate * (refProb / curProb);
 };
 
-if (!fs.existsSync(resultFile)) {
-    console.log('No benchmark results found.');
-    process.exit(0);
+const raw = (s) => ({ [util.inspect.custom]: () => s });
+
+const argv = process.argv;
+let deviceFilter = null;
+for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--device' && i + 1 < argv.length) {
+        deviceFilter = argv[i + 1].toLowerCase();
+    }
 }
 
-try {
-    const entries = JSON.parse(fs.readFileSync(resultFile, 'utf8'));
-    if (!Array.isArray(entries) || entries.length === 0) {
-        console.log('No benchmark results found.');
-        process.exit(0);
+const readResultsMap = () => {
+    if (!fs.existsSync(RESULT_FILE)) {
+        return {};
     }
+    try {
+        const data = JSON.parse(fs.readFileSync(RESULT_FILE, 'utf8'));
+        if (Array.isArray(data)) {
+            return { [DEFAULT_DEVICE_LABEL]: data };
+        }
+        if (data && typeof data === 'object') {
+            return data;
+        }
+    } catch {
+        return {};
+    }
+    return {};
+};
 
-    const util = require('util');
-    const raw = (s) => ({ [util.inspect.custom]: () => s });
+const renderPivot = (label, entries) => {
+    if (!entries.length) return;
+    const rows = [];
 
-    const categories = ['start ci', 'start cs', 'end ci', 'end cs'];
+    for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        const prev = i > 0 ? entries[i - 1] : null;
 
-    const rows = entries.map((entry, idx) => {
-        const prev = idx > 0 ? entries[idx - 1] : null;
         const dt = new Date(entry.timestamp * 1000);
         const iso = dt.toISOString().slice(0, 10); // YYYY-MM-DD
         const [y, m, d] = iso.split('-');
@@ -89,7 +109,7 @@ try {
             }
         }
 
-        for (const cat of categories) {
+        for (const cat of CATEGORIES) {
             const val = best[cat];
             if (val === null) {
                 row[cat] = raw('-');
@@ -106,11 +126,23 @@ try {
             row[cat] = raw(`${val.toFixed(4)}${delta}`);
         }
 
-        return row;
-    });
+        rows.push(row);
+    }
 
+    console.log(`\nDevice: ${label}`);
     console.table(rows);
-} catch (err) {
-    console.error('Failed to read benchmark results:', err.message);
-    process.exit(1);
+};
+
+const map = readResultsMap();
+const entries = Object.entries(map).filter(([label]) =>
+    deviceFilter ? label.toLowerCase().includes(deviceFilter) : true,
+);
+
+if (!entries.length) {
+    console.log('No benchmark results found.');
+    process.exit(0);
+}
+
+for (const [label, arr] of entries) {
+    renderPivot(label, arr);
 }

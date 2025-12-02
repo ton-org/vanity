@@ -17,21 +17,28 @@ type BenchEntry = {
     title: string;
     timestamp: number;
     cases: BenchResult[];
+    device?: string;
 };
 
+type ResultsMap = Record<string, BenchEntry[]>;
+
 const OWNER = 'EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c';
+const DEFAULT_DEVICE = 'Unknown device';
 const RESULT_FILE = path.resolve(__dirname, 'results.json');
 
-// CLI flags: --add "Title" or --replace "Title"
+// CLI flags: --add "Title", --replace "Title"
 let addTitle: string | null = null;
 let replaceTitle: string | null = null;
+let benchDevices: string | null = null; // forwarded to generator --devices
 (() => {
     const argv = process.argv;
     for (let i = 0; i < argv.length; i++) {
         if (argv[i] === '--add' && i + 1 < argv.length) addTitle = argv[i + 1];
         if (argv[i] === '--replace' && i + 1 < argv.length) replaceTitle = argv[i + 1];
+        if (argv[i] === '--devices' && i + 1 < argv.length) benchDevices = argv[i + 1];
     }
 })();
+const deviceNames = new Set<string>();
 
 type BenchCase = {
     name: string;
@@ -66,6 +73,9 @@ async function runBenchCase(testCase: BenchCase, timeoutMs: number): Promise<Ben
     copyFileSync(path.resolve('src/kernel.cl'), kernelPath);
 
     const args = [genPath, '--owner', OWNER];
+    if (benchDevices) {
+        args.push('--devices', benchDevices);
+    }
     if (testCase.start) args.push('--start', testCase.start);
     if (testCase.end) args.push('--end', testCase.end);
     if (testCase.caseSensitive) args.push('--case-sensitive');
@@ -73,6 +83,20 @@ async function runBenchCase(testCase: BenchCase, timeoutMs: number): Promise<Ben
 
     let timedOut = false;
     const child = spawn('python3', args, { cwd: tmp, stdio: ['ignore', 'pipe', 'pipe'] });
+
+    const parseDevices = (chunk: Buffer | string) => {
+        const text = chunk.toString();
+        for (const line of text.split(/\r?\n/)) {
+            const m = line.match(/Using device:\s*(.+)/i);
+            if (m && m[1]) {
+                const cleaned = m[1].replace(/^\[\d+\]\s*/, '').trim();
+                deviceNames.add(cleaned || DEFAULT_DEVICE);
+            }
+        }
+    };
+
+    child.stdout?.on('data', parseDevices);
+    child.stderr?.on('data', parseDevices);
 
     const killer = setTimeout(() => {
         timedOut = true;
@@ -116,15 +140,25 @@ const benchCases: BenchCase[] = [
 const gpuOk = gpuAvailable();
 
 (gpuOk ? describe : describe.skip)('vanity benchmark (~20s per case)', () => {
-    const priorEntries: BenchEntry[] = (() => {
-        if (!existsSync(RESULT_FILE)) return [];
-        try {
-            return JSON.parse(readFileSync(RESULT_FILE, 'utf8')) as BenchEntry[];
-        } catch {
-            return [];
+    const readResultsMap = (): ResultsMap => {
+        if (!existsSync(RESULT_FILE)) {
+            return {};
         }
-    })();
-    const baseline = priorEntries.length ? priorEntries[priorEntries.length - 1] : null;
+
+        try {
+            const data = JSON.parse(readFileSync(RESULT_FILE, 'utf8'));
+            if (data && typeof data === 'object' && !Array.isArray(data)) {
+                return data as ResultsMap;
+            }
+        } catch {
+            // fall through
+        }
+        return {};
+    };
+
+    const writeResultsMap = (map: ResultsMap) => {
+        writeFileSync(RESULT_FILE, JSON.stringify(map, null, 2));
+    };
 
     const results: BenchResult[] = [];
 
@@ -164,8 +198,9 @@ const gpuOk = gpuAvailable();
         return rate * (refProb / curProb);
     };
 
-    function renderPivot(entries: BenchEntry[]) {
+    function renderPivot(entries: BenchEntry[], deviceLabel: string) {
         if (!entries.length) return;
+        console.log(`\nDevice: ${deviceLabel}`);
         const rows: Record<string, unknown>[] = [];
 
         for (let i = 0; i < entries.length; i++) {
@@ -243,14 +278,26 @@ const gpuOk = gpuAvailable();
 
     afterAll(() => {
         if (!results.length) return;
+        const resolvedDeviceName =
+            deviceNames.size === 1
+                ? [...deviceNames][0]
+                : deviceNames.size > 1
+                  ? [...deviceNames].join(' + ')
+                  : DEFAULT_DEVICE;
+        const resultsMap = readResultsMap();
+        const priorEntries: BenchEntry[] = resultsMap[resolvedDeviceName] ?? [];
+        const baseline = priorEntries.length ? priorEntries[priorEntries.length - 1] : null;
+        console.log(`Benchmark device: ${resolvedDeviceName}${priorEntries.length ? ' (baseline loaded)' : ''}`);
+
         const currentEntry: BenchEntry = {
             title: addTitle || replaceTitle || '(current)',
             timestamp: Date.now() / 1000,
             cases: results,
+            device: resolvedDeviceName,
         };
 
         const toShow = baseline ? [baseline, currentEntry] : [currentEntry];
-        renderPivot(toShow);
+        renderPivot(toShow, resolvedDeviceName);
 
         // Regression check vs last entry
         const regressions: string[] = [];
@@ -276,6 +323,7 @@ const gpuOk = gpuAvailable();
                 title: (addTitle || replaceTitle)!,
                 timestamp: Date.now() / 1000,
                 cases: results,
+                device: resolvedDeviceName,
             };
             let out = priorEntries;
             if (replaceTitle && priorEntries.length) {
@@ -283,7 +331,8 @@ const gpuOk = gpuAvailable();
             } else {
                 out = [...priorEntries, entry];
             }
-            writeFileSync(RESULT_FILE, JSON.stringify(out, null, 2));
+            resultsMap[resolvedDeviceName] = out;
+            writeResultsMap(resultsMap);
         }
     });
 

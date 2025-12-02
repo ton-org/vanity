@@ -1,72 +1,108 @@
 {
-    "Apple M2 Max": [
+  "Apple M2 Max": [
+    {
+      "title": "ton-community/vanity-contract",
+      "timestamp": 1735407120,
+      "cases": [
         {
-            "title": "ton-community/vanity-contract",
-            "timestamp": 1735407120.0,
-            "cases": [
-                {
-                    "name": "end 4 ci",
-                    "hits": 20,
-                    "seconds": 20.0,
-                    "rate": 1.0,
-                    "timedOut": true
-                },
-                {
-                    "name": "end 4 cs",
-                    "hits": 21,
-                    "seconds": 20.0,
-                    "rate": 1.05,
-                    "timedOut": true
-                },
-                {
-                    "name": "start 4 ci",
-                    "hits": 24,
-                    "seconds": 20.0,
-                    "rate": 1.2,
-                    "timedOut": true
-                },
-                {
-                    "name": "start 4 cs",
-                    "hits": 29,
-                    "seconds": 20.0,
-                    "rate": 1.45,
-                    "timedOut": true
-                }
-            ]
+          "name": "end 4 ci",
+          "hits": 20,
+          "seconds": 20,
+          "rate": 1,
+          "timedOut": true
         },
         {
-            "title": "ton-org/vanity",
-            "timestamp": 1764229031.557,
-            "cases": [
-                {
-                    "name": "start 5 cs",
-                    "hits": 1376,
-                    "seconds": 19.616368055343628,
-                    "rate": 70.09452494573485,
-                    "timedOut": true
-                },
-                {
-                    "name": "start 5 ci",
-                    "hits": 5361,
-                    "seconds": 19.657476663589478,
-                    "rate": 272.66978828101827,
-                    "timedOut": true
-                },
-                {
-                    "name": "end 4 cs",
-                    "hits": 1022,
-                    "seconds": 18.8619327545166,
-                    "rate": 54.13018980016857,
-                    "timedOut": true
-                },
-                {
-                    "name": "end 4 ci",
-                    "hits": 12755,
-                    "seconds": 18.612507343292236,
-                    "rate": 685.2381446928705,
-                    "timedOut": true
-                }
-            ]
+          "name": "end 4 cs",
+          "hits": 21,
+          "seconds": 20,
+          "rate": 1.05,
+          "timedOut": true
+        },
+        {
+          "name": "start 4 ci",
+          "hits": 24,
+          "seconds": 20,
+          "rate": 1.2,
+          "timedOut": true
+        },
+        {
+          "name": "start 4 cs",
+          "hits": 29,
+          "seconds": 20,
+          "rate": 1.45,
+          "timedOut": true
         }
-    ]
+      ]
+    },
+    {
+      "title": "ton-org/vanity",
+      "timestamp": 1764229031.557,
+      "cases": [
+        {
+          "name": "start 5 cs",
+          "hits": 1376,
+          "seconds": 19.616368055343628,
+          "rate": 70.09452494573485,
+          "timedOut": true
+        },
+        {
+          "name": "start 5 ci",
+          "hits": 5361,
+          "seconds": 19.657476663589478,
+          "rate": 272.66978828101827,
+          "timedOut": true
+        },
+        {
+          "name": "end 4 cs",
+          "hits": 1022,
+          "seconds": 18.8619327545166,
+          "rate": 54.13018980016857,
+          "timedOut": true
+        },
+        {
+          "name": "end 4 ci",
+          "hits": 12755,
+          "seconds": 18.612507343292236,
+          "rate": 685.2381446928705,
+          "timedOut": true
+        }
+      ]
+    }
+  ],
+  "NVIDIA GeForce RTX 4090": [
+    {
+      "title": "(current)",
+      "timestamp": 1764704498.227,
+      "cases": [
+        {
+          "name": "start 6 cs",
+          "hits": 267,
+          "seconds": 18.624892950057983,
+          "rate": 14.281961282315551,
+          "timedOut": true
+        },
+        {
+          "name": "start 6 ci",
+          "hits": 2098,
+          "seconds": 18.764509439468384,
+          "rate": 111.75352101607672,
+          "timedOut": true
+        },
+        {
+          "name": "end 5 cs",
+          "hits": 141,
+          "seconds": 18.0040066242218,
+          "rate": 7.776046905673215,
+          "timedOut": true
+        },
+        {
+          "name": "end 5 ci",
+          "hits": 4395,
+          "seconds": 18.319019079208374,
+          "rate": 239.86000456689735,
+          "timedOut": true
+        }
+      ]
+    }
+  ]
 }

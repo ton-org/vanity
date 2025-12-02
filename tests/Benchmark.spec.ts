@@ -37,7 +37,26 @@ let benchDevices: string | null = null; // forwarded to generator --devices
         if (argv[i] === '--devices' && i + 1 < argv.length) benchDevices = argv[i + 1];
     }
 })();
-const deviceNames = new Set<string>();
+type BenchCase = {
+    name: string;
+    start?: string;
+    end?: string;
+    caseSensitive: boolean;
+};
+
+const parseDeviceIds = (raw: string | null): number[] | null => {
+    if (!raw) return null;
+    const ids = raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((p) => Number.parseInt(p, 10))
+        .filter((n) => !Number.isNaN(n) && n >= 0);
+    if (!ids.length) return null;
+    return ids;
+};
+
+const benchDeviceIds = parseDeviceIds(benchDevices);
 
 type PythonCmd = { exe: string; args: string[] };
 
@@ -62,12 +81,55 @@ const resolvePython = (): PythonCmd => {
 
 const PYTHON = resolvePython();
 
-type BenchCase = {
-    name: string;
-    start?: string;
-    end?: string;
-    caseSensitive: boolean;
+const detectDevices = (): string[] => {
+    const script = `
+import pyopencl as cl
+names = []
+for p in cl.get_platforms():
+    for d in p.get_devices():
+        names.append(d.name)
+for n in names:
+    print(n)
+`;
+    try {
+        const res = spawnSync(PYTHON.exe, [...PYTHON.args, '-c', script], { encoding: 'utf8' });
+        if (res.status !== 0) return [];
+        return res.stdout
+            .split(/\\r?\\n/)
+            .map((l) => l.trim())
+            .filter((l) => l);
+    } catch {
+        return [];
+    }
 };
+
+const chooseBenchCases = (names: string[]): BenchCase[] => {
+    const defaults: BenchCase[] = [
+        { name: 'start 5 cs', start: 'WERTY', caseSensitive: true },
+        { name: 'start 5 ci', start: 'WeRtY', caseSensitive: false },
+        { name: 'end 4 cs', end: 'WERT', caseSensitive: true },
+        { name: 'end 4 ci', end: 'WeRt', caseSensitive: false },
+    ];
+    const lower = names.join(' ').toLowerCase();
+    const isRTX3Plus = /rtx\\s*(3|4|5)\\d{2,3}/.test(lower);
+    if (!isRTX3Plus) return defaults;
+    return [
+        { name: 'start 6 cs', start: 'WERTYU', caseSensitive: true },
+        { name: 'start 6 ci', start: 'WeRtYu', caseSensitive: false },
+        { name: 'end 5 cs', end: 'WERTY', caseSensitive: true },
+        { name: 'end 5 ci', end: 'WeRtY', caseSensitive: false },
+    ];
+};
+
+const detectedDevicesAll = detectDevices();
+const detectedDevices = benchDeviceIds
+    ? benchDeviceIds
+          .map((i) => detectedDevicesAll[i])
+          .filter((n): n is string => typeof n === 'string' && n.length > 0)
+    : detectedDevicesAll;
+
+const benchCases: BenchCase[] = chooseBenchCases(detectedDevices.length ? detectedDevices : [DEFAULT_DEVICE]);
+const deviceNames = new Set<string>(detectedDevices);
 
 function gpuAvailable(): boolean {
     const probe = `

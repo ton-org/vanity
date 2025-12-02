@@ -1,4 +1,4 @@
-import { Address, beginCell, Cell, Contract, contractAddress, StateInit } from '@ton/core';
+import { Address, beginCell, Cell, Contract, ContractProvider, Sender, SendMode, StateInit } from '@ton/core';
 
 export type VanityConfig = {
     owner: Address;
@@ -7,41 +7,79 @@ export type VanityConfig = {
     special: number | undefined;
 };
 
+type VanityExtra = {
+    sendDeployVanity: (provider: ContractProvider, via: Sender, value: bigint) => Promise<void>;
+};
+
+export type ContractWithVanity<T extends Contract = Contract> = T & VanityExtra;
+
 export class Vanity implements Contract {
     constructor(
         readonly address: Address,
         readonly init?: StateInit,
     ) {}
 
-    static createFromAddress(address: Address) {
-        return new Vanity(address);
-    }
+    static createFromLine(line: string) {
+        type VanityInitJson = {
+            code: string;
+            data?: string;
+            fixedPrefixLength?: number;
+            special?: { tick: boolean; tock: boolean } | null;
+        };
+        type VanityLineJson = { address: string; init: VanityInitJson };
 
-    static createFromConfig(config: VanityConfig, workchain = 0) {
-        const code = buildCodeCell(config);
-        const init: StateInit = { code, data: null };
-        return new Vanity(contractAddress(workchain, init), init);
-    }
+        const obj = JSON.parse(line) as VanityLineJson;
+        const address = Address.parse(obj.address);
 
-    static createFromJsonl(address: Address, init: StateInit) {
+        const init: StateInit = {
+            code: Cell.fromBase64(obj.init.code),
+            splitDepth: obj.init.fixedPrefixLength ?? undefined,
+        };
+        if (obj.init.data) {
+            init.data = Cell.fromBase64(obj.init.data);
+        }
+        if (obj.init.special) {
+            init.special = {
+                tick: !!obj.init.special.tick,
+                tock: !!obj.init.special.tock,
+            };
+        }
+
         return new Vanity(address, init);
     }
-}
 
-const CONST1 = 1065632427291681n; // 50 bits
-const CONST2 = 457587318777827214152676959512820176586892797206855680n; // 179 bits
+    installContract<T extends Contract>(contract: T): ContractWithVanity<T> {
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        const self = this;
 
-function buildCodeCell(config: VanityConfig): Cell {
-    const { owner, salt } = config;
-    if (salt.length !== 16) {
-        throw new Error('Salt must be exactly 16 bytes');
+        const extra: VanityExtra = {
+            async sendDeployVanity(provider: ContractProvider, via: Sender, value: bigint) {
+                await provider.internal(via, {
+                    value,
+                    sendMode: SendMode.PAY_GAS_SEPARATELY,
+                    body: beginCell()
+                        .storeRef(contract.init?.code ?? Cell.EMPTY)
+                        .storeRef(contract.init?.data ?? Cell.EMPTY)
+                        .endCell(),
+                });
+            },
+        };
+
+        const proxy = new Proxy(contract as T & VanityExtra, {
+            get(target, prop, receiver) {
+                if (prop === 'init') {
+                    return self.init;
+                }
+                if (prop === 'address') {
+                    return self.address;
+                }
+                if (prop === 'sendDeployVanity') {
+                    return extra.sendDeployVanity;
+                }
+                return Reflect.get(target, prop, receiver);
+            },
+        });
+
+        return proxy as ContractWithVanity<T>;
     }
-
-    const builder = beginCell();
-    builder.storeUint(CONST1, 50);
-    builder.storeAddress(owner); // tag, anycast, workchain, addr hash
-    builder.storeUint(CONST2, 179);
-    builder.storeBuffer(salt);
-
-    return builder.endCell();
 }

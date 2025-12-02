@@ -9,8 +9,8 @@ export async function run(provider: NetworkProvider) {
                 id: Math.floor(Math.random() * 10000),
                 counter: 0,
             },
-            await compile('Example')
-        )
+            await compile('Example'),
+        ),
     );
 
     await example.sendDeploy(provider.sender(), toNano('0.05'));

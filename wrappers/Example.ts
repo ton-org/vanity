@@ -15,7 +15,10 @@ export const Opcodes = {
 };
 
 export class Example implements Contract {
-    constructor(readonly address: Address, readonly init?: { code: Cell; data: Cell }) {}
+    constructor(
+        readonly address: Address,
+        readonly init?: { code: Cell; data: Cell },
+    ) {}
 
     static createFromAddress(address: Address) {
         return new Example(address);
@@ -42,7 +45,7 @@ export class Example implements Contract {
             increaseBy: number;
             value: bigint;
             queryID?: number;
-        }
+        },
     ) {
         await provider.internal(via, {
             value: opts.value,
@@ -61,7 +64,7 @@ export class Example implements Contract {
         opts: {
             value: bigint;
             queryID?: number;
-        }
+        },
     ) {
         await provider.internal(via, {
             value: opts.value,

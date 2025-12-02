@@ -32,8 +32,16 @@ let benchDevices: string | null = null; // forwarded to generator --devices
 (() => {
     const argv = process.argv;
     for (let i = 0; i < argv.length; i++) {
-        if (argv[i] === '--add' && i + 1 < argv.length) addTitle = argv[i + 1];
-        if (argv[i] === '--replace' && i + 1 < argv.length) replaceTitle = argv[i + 1];
+        if (argv[i] === '--add') {
+            const val = argv[i + 1];
+            addTitle = val && !val.startsWith('-') ? val : '(current)';
+            if (val && !val.startsWith('-')) i++;
+        }
+        if (argv[i] === '--replace') {
+            const val = argv[i + 1];
+            replaceTitle = val && !val.startsWith('-') ? val : '(current)';
+            if (val && !val.startsWith('-')) i++;
+        }
         if (argv[i] === '--devices' && i + 1 < argv.length) benchDevices = argv[i + 1];
     }
 })();
@@ -111,7 +119,7 @@ const chooseBenchCases = (names: string[]): BenchCase[] => {
         { name: 'end 4 ci', end: 'WeRt', caseSensitive: false },
     ];
     const lower = names.join(' ').toLowerCase();
-    const isRTX3Plus = /rtx\\s*(3|4|5)\\d{2,3}/.test(lower);
+    const isRTX3Plus = /rtx\s*(3|4|5)\d{2,3}/i.test(lower);
     if (!isRTX3Plus) return defaults;
     return [
         { name: 'start 6 cs', start: 'WERTYU', caseSensitive: true },

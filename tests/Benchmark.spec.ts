@@ -60,8 +60,21 @@ try:
 except Exception:
     print("0")
 `;
-    const res = spawnSync('python3', ['-c', probe], { cwd: 'src', encoding: 'utf8' });
-    return res.status === 0 && res.stdout.trim() === '1';
+    const candidates = process.platform === 'win32' ? [['py', '-3'], ['python'], ['python3']] : [['python3'], ['python']];
+
+    for (const [cmd, ...args] of candidates) {
+        try {
+            const res = spawnSync(cmd, [...args, '-c', probe], { cwd: 'src', encoding: 'utf8' });
+            if (res.status === 0 && res.stdout.trim() === '1') {
+                return true;
+            }
+        } catch {
+            // ignore and try next candidate
+        }
+    }
+
+    console.warn('Skipping benchmarks: no GPU detected via pyopencl (python/py not usable or no OpenCL devices)');
+    return false;
 }
 
 async function runBenchCase(testCase: BenchCase, timeoutMs: number): Promise<BenchResult> {

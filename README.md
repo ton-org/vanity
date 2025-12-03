@@ -24,3 +24,9 @@ Found 6, 834.50M iters/s
 ```
 
 You can stop it at any moment, and all the found addresses will be stored in `addresses.jsonl` file.
+
+## Benchmarks
+
+Generated from `tests/results.json` via `python3 scripts/chart.py`. Data comes from `npm run benchmark:print`.
+
+![Benchmark speedups](tests/benchmarks.png)

@@ -118,3 +118,7 @@ describe('Example', () => {
 Generated from `tests/results.json` via `python3 scripts/chart.py`. Data comes from `npm run benchmark:print`.
 
 ![Benchmark speedups](tests/benchmarks.png)
+
+## License
+
+This project is licensed under the MIT License. See the `LICENSE` file for the full text.

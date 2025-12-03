@@ -1,6 +1,6 @@
 # TON Vanity
 
-A blazingly fast vanity address generator for TON Blockchain. Built with OpenCL and powered by numerous TON-specific optimizations. Check out the [benchmarks](#benchmarks) and [optimizations](#optimizations) sections for more details.
+A blazingly fast vanity address generator for TON Blockchain. Built with OpenCL and powered by numerous TON-specific optimizations. Check out the [Benchmarks](#benchmarks) and [Optimizations](#optimizations) sections for more details.
 
 ## Quickstart
 
@@ -123,6 +123,19 @@ Generated from [tests/results.json](tests/results.json) using [scripts/chart.py]
 
 ![Benchmark speedups](tests/benchmarks.png)
 
+## Prior art
+
+Before TON Vanity, the de facto standard for vanity addresses of arbitrary contracts on TON was [ton-community/vanity-contract](https://github.com/ton-community/vanity-contract).
+
+It introduced the now-common pattern:
+
+- mine a `salt` off-chain with a GPU tool until the `StateInit` produces a desired prefix or suffix
+- deploy a generic vanity contract bound to an `owner` address
+- have that contract install the final code and data in a single deploy transaction
+
+TON Vanity keeps the same usage pattern and deployment flow but replaces both the miner and the on-chain contract with a new implementation focused on throughput and TON-specific optimizations, while also improving CLI design, TypeScript integration, and overall UX. In our benchmarks mirroring common use cases, this results in speedups of up to multiple orders of magnitude over [ton-community/vanity-contract](https://github.com/ton-community/vanity-contract), depending on the pattern and hardware used.
+See [Benchmarks](#benchmarks) for details.
+
 ## Optimizations
 
 **A detailed write-up covering all optimizations and the development process will be published soon.**
@@ -130,8 +143,8 @@ Generated from [tests/results.json](tests/results.json) using [scripts/chart.py]
 The key optimizations include:
 
 - Using `fixed_prefix_length` for first 8 bits of prefix
-- A low-level smart contract implementation that places the salt in the `code` cell, allowing StateInit hashes to be computed with just 2 blocks of SHA-256 per address
-- Iterable `special` and `fixed_prefix_length` parameters in StateInit that enable recomputing just 1 block of SHA-256 per address for most iterations
+- A low-level smart contract implementation that places the salt in the `code` cell, allowing `StateInit` hashes to be computed with just 2 blocks of SHA-256 per address
+- Iterable `special` and `fixed_prefix_length` parameters in `StateInit` that enable recomputing just 1 block of SHA-256 per address for most iterations
 
 ## License
 

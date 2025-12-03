@@ -69,10 +69,7 @@ const benchDeviceIds = parseDeviceIds(benchDevices);
 type PythonCmd = { exe: string; args: string[] };
 
 const resolvePython = (): PythonCmd => {
-    const candidates =
-        process.platform === 'win32'
-            ? ['py', 'py -3', 'python3', 'python']
-            : ['python3', 'python'];
+    const candidates = process.platform === 'win32' ? ['py', 'py -3', 'python3', 'python'] : ['python3', 'python'];
     for (const cmd of candidates) {
         const [exe, ...args] = cmd.split(' ');
         try {
@@ -137,9 +134,7 @@ const normalizeDeviceName = (name: string) =>
 
 const detectedDevicesAll = detectDevices().map(normalizeDeviceName).filter(Boolean);
 const selectedDevices = benchDeviceIds
-    ? benchDeviceIds
-          .map((i) => detectedDevicesAll[i])
-          .filter((n): n is string => typeof n === 'string' && n.length > 0)
+    ? benchDeviceIds.map((i) => detectedDevicesAll[i]).filter((n): n is string => typeof n === 'string' && n.length > 0)
     : detectedDevicesAll;
 
 const benchCases: BenchCase[] = (() => {
@@ -319,10 +314,10 @@ const gpuOk = gpuAvailable();
             const entry = entries[i];
             const prev = i > 0 ? entries[i - 1] : null;
 
-        const dt = new Date(entry.timestamp * 1000);
-        const iso = dt.toISOString().slice(0, 10);
-        const [y, m, d] = iso.split('-');
-        const dateStr = `${d}.${m}.${y.slice(2)}`; // DD.MM.YY
+            const dt = new Date(entry.timestamp * 1000);
+            const iso = dt.toISOString().slice(0, 10);
+            const [y, m, d] = iso.split('-');
+            const dateStr = `${d}.${m}.${y.slice(2)}`; // DD.MM.YY
 
             const row: Record<string, unknown> = {
                 run: raw(String(entry.title)),
@@ -406,8 +401,7 @@ const gpuOk = gpuAvailable();
                   : detectedDevicesAll.length
                     ? detectedDevicesAll
                     : [DEFAULT_DEVICE];
-        const resolvedDeviceName =
-            effectiveDevices.length === 1 ? effectiveDevices[0] : effectiveDevices.join(' + ');
+        const resolvedDeviceName = effectiveDevices.length === 1 ? effectiveDevices[0] : effectiveDevices.join(' + ');
 
         const resultsMap = readResultsMap();
         const priorEntries: BenchEntry[] = resultsMap[resolvedDeviceName] ?? [];

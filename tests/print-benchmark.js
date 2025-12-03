@@ -31,7 +31,6 @@ const normalizeRate = (rate, length, ci) => {
 };
 const raw = (s) => ({ [Symbol.for('nodejs.util.inspect.custom')]: () => s });
 
-
 const argv = process.argv;
 let deviceFilter = null;
 for (let i = 0; i < argv.length; i++) {

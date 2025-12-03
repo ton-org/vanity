@@ -943,7 +943,7 @@ def process_hit(
 
     init_obj = {
         "code": base64.urlsafe_b64encode(boc_code).decode("utf-8"),
-        "fixedPrefixLength": 0 if fpl_val is None else fpl_val,
+        "fixedPrefixLength": None if fpl_val is None else fpl_val,
         "special": None
         if special is None
         else {"tick": bool(special[0]), "tock": bool(special[1])},

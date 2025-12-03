@@ -1,5 +1,7 @@
 # TON Vanity
 
+Blazingly fast vanity-address generator for TON Blockchain. Uses OpenCL and is powered by many optimizations, including usage of latest TON features. Chcek out [benchmarks](#benchmarks) and [optimizations](#optimizations) as well.
+
 ## Quickstart
 
 Just clone the repository and run `src/generator.py`:
@@ -118,6 +120,10 @@ describe('Example', () => {
 Generated from `tests/results.json` via `python3 scripts/chart.py`. Data comes from `npm run benchmark:print`.
 
 ![Benchmark speedups](tests/benchmarks.png)
+
+## Optimizations
+
+Key optimizations are usage of fixed prefix length for prefixes, low-level implementation of smart contract to put the salt into `code` cell so that StateInit's hash can be computed with just 2 blocks of SHA-256 per address, and iterable `special` and `fixed_prefix_length` paraters of StateInit that allow recomputing just 1 block of SHA-256 per address for most of the time. A more detailed write-up on all optimizations and the process of development will be published soon.
 
 ## License
 

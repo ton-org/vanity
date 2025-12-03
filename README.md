@@ -133,8 +133,6 @@ It introduced the now-common pattern:
 - deploy a generic vanity contract bound to an `owner` address
 - have that contract install the final code and data in a single deploy transaction
 
-Here’s a cleaned up version:
-
 TON Vanity keeps the same usage pattern and deployment flow but replaces both the miner and the on-chain contract with a new implementation focused on throughput and TON-specific optimizations, while also improving CLI design, TypeScript integration, and overall UX. In our benchmarks mirroring common use cases, this results in speedups of up to multiple orders of magnitude over [ton-community/vanity-contract](https://github.com/ton-community/vanity-contract), depending on the pattern and hardware used.
 See [Benchmarks](#benchmarks) for details.
 

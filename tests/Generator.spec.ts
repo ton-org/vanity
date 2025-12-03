@@ -23,10 +23,7 @@ const MASTERCHAIN_VARIANTS = [false, true];
 type PythonCmd = { exe: string; args: string[] };
 
 const resolvePython = (): PythonCmd => {
-    const candidates =
-        process.platform === 'win32'
-            ? ['py', 'py -3', 'python3', 'python']
-            : ['python3', 'python'];
+    const candidates = process.platform === 'win32' ? ['py', 'py -3', 'python3', 'python'] : ['python3', 'python'];
     for (const cmd of candidates) {
         const [exe, ...args] = cmd.split(' ');
         try {
@@ -43,7 +40,9 @@ const resolvePython = (): PythonCmd => {
 
 const PYTHON = resolvePython();
 
-function gpuAvailable(): boolean {
+type GpuProbe = { ok: boolean; reason?: string };
+
+function gpuAvailable(): GpuProbe {
     const probe = `
 try:
     import pyopencl as cl
@@ -54,11 +53,26 @@ try:
         except Exception:
             pass
     print("1" if devs else "0")
-except Exception:
-    print("0")
+except Exception as e:
+    print("err:" + repr(e))
 `;
-    const res = spawnSync(PYTHON.exe, [...PYTHON.args, '-c', probe], { cwd: 'src', encoding: 'utf8' });
-    return res.status === 0 && res.stdout.trim() === '1';
+    const res = spawnSync(PYTHON.exe, [...PYTHON.args, '-c', probe], {
+        cwd: 'src',
+        encoding: 'utf8',
+    });
+
+    if (res.error) {
+        return { ok: false, reason: `spawn failed: ${res.error.message}` };
+    }
+    const out = (res.stdout || '').trim();
+    if (res.status !== 0) {
+        const err = (res.stderr || out || `exit ${res.status}`).trim();
+        return { ok: false, reason: `python exited ${res.status}: ${err}` };
+    }
+    if (out === '1') {
+        return { ok: true };
+    }
+    return { ok: false, reason: `pyopencl unavailable or no OpenCL devices (stdout="${out}")` };
 }
 
 type PyInfo = { start_digit_base: number };
@@ -218,9 +232,13 @@ for (let len = 1; len <= 4; len++) {
 
 const scenarios: Scenario[] = [...startScenarios, ...endScenarios, ...comboScenarios];
 
-const gpuOk = gpuAvailable();
+const gpu = gpuAvailable();
+if (!gpu.ok) {
+    // Log once so it shows up even when the suite is skipped.
+    console.warn(`[generator.py GPU matrix] skipping: ${gpu.reason}`);
+}
 
-(gpuOk ? describe : describe.skip)('generator.py GPU matrix', () => {
+(gpu.ok ? describe : describe.skip)('generator.py GPU matrix', () => {
     const owner = Address.parseFriendly(OWNER).address;
 
     it.each(scenarios)('$name', (scenario) => {
@@ -260,7 +278,7 @@ const gpuOk = gpuAvailable();
         // Rebuild StateInit and recompute contract address, compare to reported.
         type HitInit = {
             code: string;
-            fixedPrefixLength?: number;
+            fixedPrefixLength?: number | null;
             special?: { tick: boolean; tock: boolean } | null;
         };
         type HitConfig = {
@@ -276,7 +294,7 @@ const gpuOk = gpuAvailable();
         const stateInit: StateInit & { special?: { tick: boolean; tock: boolean } } = {
             code: codeCell,
         };
-        if (init.fixedPrefixLength && init.fixedPrefixLength > 0) {
+        if (init.fixedPrefixLength !== undefined && init.fixedPrefixLength !== null) {
             stateInit.splitDepth = init.fixedPrefixLength;
         }
         if (init.special) {

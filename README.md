@@ -58,7 +58,7 @@ Here is what each field represents:
 * `config`: The configuration settings used to generate this address.
 * `timestamp`: The Unix timestamp (in seconds) when this address was generated.
 
-You can use this output to deploy any smart contract to your vanity address. Make sure to include [wrappers/Vanity.ts](/wrappers/Vanity.ts) in your project directory. Here is an example for sandbox tests:
+You can use this output to deploy any smart contract to your vanity address. Make sure to include [wrappers/Vanity.ts](wrappers/Vanity.ts) in your project directory. Here is an example for sandbox tests:
 
 ```ts
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
@@ -119,7 +119,7 @@ describe('Example', () => {
 
 ## Benchmarks
 
-Generated from [tests/results.json](/tests/results.json) using [scripts/chart.py](/scripts/chart.py). The data is collected via `npm run benchmark:print`.
+Generated from [tests/results.json](tests/results.json) using [scripts/chart.py](scripts/chart.py). The data is collected via `npm run benchmark:print`.
 
 ![Benchmark speedups](tests/benchmarks.png)
 

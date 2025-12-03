@@ -1,6 +1,6 @@
 # TON Vanity
 
-A blazingly fast vanity address generator for the TON Blockchain. Built with OpenCL and powered by numerous TON-specific optimizations. Check out the [benchmarks](#benchmarks) and [optimizations](#optimizations) sections for more details.
+A blazingly fast vanity address generator for TON Blockchain. Built with OpenCL and powered by numerous TON-specific optimizations. Check out the [benchmarks](#benchmarks) and [optimizations](#optimizations) sections for more details.
 
 ## Quickstart
 
@@ -31,32 +31,32 @@ The output file contains lines in the following format:
 
 ```json
 {
-   "address":"EQBSCgaA2cK7x-vKrERl84nikhPm1AbBdujoa6RlLRABCDEf",
-   "init":{
-      "code":"te6ccgEBAQEAUAAAnPJL-JKNCGACNDUWAzY8JUivnwDkKemMr2kqZKRxDW3Z8lTZ-vnjprzHBfLjIdTUMO1U-wTbMAAAAAAAAAAAmEQScKFrbwHa97YAdBCNCQ==",
-      "fixedPrefixLength":8,
-      "special":null
-   },
-   "config":{
-      "owner":"EQBGhqLAZseEqRXz4ByFPTGV7SVMlI4hrbs-Sps_Xzx01x8G",
-      "start":null,
-      "end":"ABCDEF",
-      "masterchain":false,
-      "non_bounceable":false,
-      "testnet":false,
-      "case_sensitive":false,
-      "only_one":false
-   },
-   "timestamp":1764743367.707375
+    "address": "EQBSCgaA2cK7x-vKrERl84nikhPm1AbBdujoa6RlLRABCDEf",
+    "init": {
+        "code": "te6ccgEBAQEAUAAAnPJL-JKNCGACNDUWAzY8JUivnwDkKemMr2kqZKRxDW3Z8lTZ-vnjprzHBfLjIdTUMO1U-wTbMAAAAAAAAAAAmEQScKFrbwHa97YAdBCNCQ==",
+        "fixedPrefixLength": 8,
+        "special": null
+    },
+    "config": {
+        "owner": "EQBGhqLAZseEqRXz4ByFPTGV7SVMlI4hrbs-Sps_Xzx01x8G",
+        "start": null,
+        "end": "ABCDEF",
+        "masterchain": false,
+        "non_bounceable": false,
+        "testnet": false,
+        "case_sensitive": false,
+        "only_one": false
+    },
+    "timestamp": 1764743367.707375
 }
 ```
 
 Here is what each field represents:
 
-* `address`: The resulting vanity address. Always use this value directly from the output to ensure the fixed prefix length is properly accounted for.
-* `init`: A `StateInit`-like object for deployment. The `code` field is a Base64-encoded BoC, and `fixedPrefixLength` is the proper name for the legacy `splitDepth` parameter from the [@ton/core](https://github.com/ton-org/ton-core) library.
-* `config`: The configuration settings used to generate this address.
-* `timestamp`: The Unix timestamp (in seconds) when this address was generated.
+- `address`: The resulting vanity address. Always use this value directly from the output to ensure the fixed prefix length is properly accounted for.
+- `init`: A `StateInit`-like object for deployment. The `code` field is a Base64-encoded BoC, and `fixedPrefixLength` is the proper name for the legacy `splitDepth` parameter from the [@ton/core](https://github.com/ton-org/ton-core) library.
+- `config`: The configuration settings used to generate this address.
+- `timestamp`: The Unix timestamp (in seconds) when this address was generated.
 
 You can use this output to deploy any smart contract to your vanity address. Make sure to include [wrappers/Vanity.ts](wrappers/Vanity.ts) in your project directory. Here is an example for sandbox tests:
 
@@ -129,9 +129,9 @@ Generated from [tests/results.json](tests/results.json) using [scripts/chart.py]
 
 The key optimizations include:
 
-* Using `fixed_prefix_length` for first 8 bits of prefix
-* A low-level smart contract implementation that places the salt in the `code` cell, allowing StateInit hashes to be computed with just 2 blocks of SHA-256 per address
-* Iterable `special` and `fixed_prefix_length` parameters in StateInit that enable recomputing just 1 block of SHA-256 per address for most iterations
+- Using `fixed_prefix_length` for first 8 bits of prefix
+- A low-level smart contract implementation that places the salt in the `code` cell, allowing StateInit hashes to be computed with just 2 blocks of SHA-256 per address
+- Iterable `special` and `fixed_prefix_length` parameters in StateInit that enable recomputing just 1 block of SHA-256 per address for most iterations
 
 ## License
 

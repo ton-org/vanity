@@ -1,3 +1,5 @@
+// --- SHA256 Definitions and Optimizations ---
+
 #define F1(x,y,z)   (bitselect(z,y,x))
 #define F0(x,y,z)   (bitselect (x, y, ((x) ^ (z))))
 #define shr32(x,n) ((x) >> (n))
@@ -8,8 +10,13 @@
 #define S2(x) (rotl32 ((x), 30u) ^ rotl32 ((x), 19u) ^ rotl32 ((x), 10u))
 #define S3(x) (rotl32 ((x), 26u) ^ rotl32 ((x), 21u) ^ rotl32 ((x),  7u))
 
-#define SWAP(val) (rotate(((val) & 0x00FF00FF), 24U) | rotate(((val) & 0xFF00FF00), 8U));
+// Optimization: Efficient Byte Swapping using vector shuffling.
+#define SWAP(val) (as_uint(as_uchar4(val).wzyx))
 
+// Optimization: Macro to extract byte k from a LE uint array.
+#define GET_BYTE_LE_ARRAY(arr, k) ((uchar)((arr[(k) >> 2] >> (((k) & 3) << 3)) & 0xFF))
+
+// SHA256 Constants (Used as immediate values)
 #define SHA256C00 0x428a2f98u
 #define SHA256C01 0x71374491u
 #define SHA256C02 0xb5c0fbcfu
@@ -75,39 +82,32 @@
 #define SHA256C3e 0xbef9a3f7u
 #define SHA256C3f 0xc67178f2u
 
-__constant uint k_sha256[64] =
-{
-  SHA256C00, SHA256C01, SHA256C02, SHA256C03,
-  SHA256C04, SHA256C05, SHA256C06, SHA256C07,
-  SHA256C08, SHA256C09, SHA256C0a, SHA256C0b,
-  SHA256C0c, SHA256C0d, SHA256C0e, SHA256C0f,
-  SHA256C10, SHA256C11, SHA256C12, SHA256C13,
-  SHA256C14, SHA256C15, SHA256C16, SHA256C17,
-  SHA256C18, SHA256C19, SHA256C1a, SHA256C1b,
-  SHA256C1c, SHA256C1d, SHA256C1e, SHA256C1f,
-  SHA256C20, SHA256C21, SHA256C22, SHA256C23,
-  SHA256C24, SHA256C25, SHA256C26, SHA256C27,
-  SHA256C28, SHA256C29, SHA256C2a, SHA256C2b,
-  SHA256C2c, SHA256C2d, SHA256C2e, SHA256C2f,
-  SHA256C30, SHA256C31, SHA256C32, SHA256C33,
-  SHA256C34, SHA256C35, SHA256C36, SHA256C37,
-  SHA256C38, SHA256C39, SHA256C3a, SHA256C3b,
-  SHA256C3c, SHA256C3d, SHA256C3e, SHA256C3f,
-};
-
-#define SHA256_STEP(F0a,F1a,a,b,c,d,e,f,g,h,x,K)  \
-{                                                 \
-  h += K;                                         \
-  h += x;                                         \
-  h += S3 (e);                                    \
-  h += F1a (e,f,g);                               \
-  d += h;                                         \
-  h += S2 (a);                                    \
-  h += F0a (a,b,c);                               \
-}
-
 #define SHA256_EXPAND(x,y,z,w) (S1 (x) + y + S0 (z) + w)
 
+// Optimization: ILP optimized SHA256 STEP (T1/T2 formulation). Takes combined K+W (KW).
+#define SHA256_STEP_OPT(F0a,F1a,a,b,c,d,e,f,g,h,KW) \
+{                                                   \
+  uint T1 = h + S3(e) + F1a(e,f,g) + KW;            \
+  uint T2 = S2(a) + F0a(a,b,c);                     \
+  d += T1;                                          \
+  h = T1 + T2;                                      \
+}
+
+// Rounds 0-15: Combine K+W using immediate constants.
+#define ROUND_0_15_IMM(a, b, c, d, e, f, g, h, w, K_IMM) \
+{ \
+    SHA256_STEP_OPT(F0, F1, a, b, c, d, e, f, g, h, w + K_IMM); \
+}
+
+// Rounds 16-63: Interleaved expansion and compression using immediate constants.
+// W_i_16 is updated in place (register reuse).
+#define ROUND_16_63_IMM(a, b, c, d, e, f, g, h, W_i_16, W_i_15, W_i_7, W_i_2, K_IMM) \
+{ \
+    W_i_16 = SHA256_EXPAND(W_i_2, W_i_7, W_i_15, W_i_16); \
+    SHA256_STEP_OPT(F0, F1, a, b, c, d, e, f, g, h, W_i_16 + K_IMM); \
+}
+
+// Maximally optimized SHA256 process function: Fully Unrolled, Interleaved, ILP Optimized, Immediate Constants.
 static void sha256_process2 (const unsigned int *W, unsigned int *digest)
 {
   unsigned int a = digest[0];
@@ -119,6 +119,7 @@ static void sha256_process2 (const unsigned int *W, unsigned int *digest)
   unsigned int g = digest[6];
   unsigned int h = digest[7];
 
+  // Load W into private registers
   unsigned int w0_t = W[0];
   unsigned int w1_t = W[1];
   unsigned int w2_t = W[2];
@@ -136,56 +137,82 @@ static void sha256_process2 (const unsigned int *W, unsigned int *digest)
   unsigned int we_t = W[14];
   unsigned int wf_t = W[15];
 
-  #define ROUND_EXPAND()                           \
-  {                                                \
-    w0_t = SHA256_EXPAND (we_t, w9_t, w1_t, w0_t); \
-    w1_t = SHA256_EXPAND (wf_t, wa_t, w2_t, w1_t); \
-    w2_t = SHA256_EXPAND (w0_t, wb_t, w3_t, w2_t); \
-    w3_t = SHA256_EXPAND (w1_t, wc_t, w4_t, w3_t); \
-    w4_t = SHA256_EXPAND (w2_t, wd_t, w5_t, w4_t); \
-    w5_t = SHA256_EXPAND (w3_t, we_t, w6_t, w5_t); \
-    w6_t = SHA256_EXPAND (w4_t, wf_t, w7_t, w6_t); \
-    w7_t = SHA256_EXPAND (w5_t, w0_t, w8_t, w7_t); \
-    w8_t = SHA256_EXPAND (w6_t, w1_t, w9_t, w8_t); \
-    w9_t = SHA256_EXPAND (w7_t, w2_t, wa_t, w9_t); \
-    wa_t = SHA256_EXPAND (w8_t, w3_t, wb_t, wa_t); \
-    wb_t = SHA256_EXPAND (w9_t, w4_t, wc_t, wb_t); \
-    wc_t = SHA256_EXPAND (wa_t, w5_t, wd_t, wc_t); \
-    wd_t = SHA256_EXPAND (wb_t, w6_t, we_t, wd_t); \
-    we_t = SHA256_EXPAND (wc_t, w7_t, wf_t, we_t); \
-    wf_t = SHA256_EXPAND (wd_t, w8_t, w0_t, wf_t); \
-  }
+  // --- Fully Unrolled Rounds ---
 
-  #define ROUND_STEP(i)                                                                   \
-  {                                                                                       \
-    SHA256_STEP (F0, F1, a, b, c, d, e, f, g, h, w0_t, k_sha256[i +  0]);                 \
-    SHA256_STEP (F0, F1, h, a, b, c, d, e, f, g, w1_t, k_sha256[i +  1]);                 \
-    SHA256_STEP (F0, F1, g, h, a, b, c, d, e, f, w2_t, k_sha256[i +  2]);                 \
-    SHA256_STEP (F0, F1, f, g, h, a, b, c, d, e, w3_t, k_sha256[i +  3]);                 \
-    SHA256_STEP (F0, F1, e, f, g, h, a, b, c, d, w4_t, k_sha256[i +  4]);                 \
-    SHA256_STEP (F0, F1, d, e, f, g, h, a, b, c, w5_t, k_sha256[i +  5]);                 \
-    SHA256_STEP (F0, F1, c, d, e, f, g, h, a, b, w6_t, k_sha256[i +  6]);                 \
-    SHA256_STEP (F0, F1, b, c, d, e, f, g, h, a, w7_t, k_sha256[i +  7]);                 \
-    SHA256_STEP (F0, F1, a, b, c, d, e, f, g, h, w8_t, k_sha256[i +  8]);                 \
-    SHA256_STEP (F0, F1, h, a, b, c, d, e, f, g, w9_t, k_sha256[i +  9]);                 \
-    SHA256_STEP (F0, F1, g, h, a, b, c, d, e, f, wa_t, k_sha256[i + 10]);                 \
-    SHA256_STEP (F0, F1, f, g, h, a, b, c, d, e, wb_t, k_sha256[i + 11]);                 \
-    SHA256_STEP (F0, F1, e, f, g, h, a, b, c, d, wc_t, k_sha256[i + 12]);                 \
-    SHA256_STEP (F0, F1, d, e, f, g, h, a, b, c, wd_t, k_sha256[i + 13]);                 \
-    SHA256_STEP (F0, F1, c, d, e, f, g, h, a, b, we_t, k_sha256[i + 14]);                 \
-    SHA256_STEP (F0, F1, b, c, d, e, f, g, h, a, wf_t, k_sha256[i + 15]);                 \
-  }
+  // Rounds 0-15
+  ROUND_0_15_IMM(a, b, c, d, e, f, g, h, w0_t, SHA256C00);
+  ROUND_0_15_IMM(h, a, b, c, d, e, f, g, w1_t, SHA256C01);
+  ROUND_0_15_IMM(g, h, a, b, c, d, e, f, w2_t, SHA256C02);
+  ROUND_0_15_IMM(f, g, h, a, b, c, d, e, w3_t, SHA256C03);
+  ROUND_0_15_IMM(e, f, g, h, a, b, c, d, w4_t, SHA256C04);
+  ROUND_0_15_IMM(d, e, f, g, h, a, b, c, w5_t, SHA256C05);
+  ROUND_0_15_IMM(c, d, e, f, g, h, a, b, w6_t, SHA256C06);
+  ROUND_0_15_IMM(b, c, d, e, f, g, h, a, w7_t, SHA256C07);
+  ROUND_0_15_IMM(a, b, c, d, e, f, g, h, w8_t, SHA256C08);
+  ROUND_0_15_IMM(h, a, b, c, d, e, f, g, w9_t, SHA256C09);
+  ROUND_0_15_IMM(g, h, a, b, c, d, e, f, wa_t, SHA256C0a);
+  ROUND_0_15_IMM(f, g, h, a, b, c, d, e, wb_t, SHA256C0b);
+  ROUND_0_15_IMM(e, f, g, h, a, b, c, d, wc_t, SHA256C0c);
+  ROUND_0_15_IMM(d, e, f, g, h, a, b, c, wd_t, SHA256C0d);
+  ROUND_0_15_IMM(c, d, e, f, g, h, a, b, we_t, SHA256C0e);
+  ROUND_0_15_IMM(b, c, d, e, f, g, h, a, wf_t, SHA256C0f);
 
-  ROUND_STEP (0);
+  // Rounds 16-31 (Interleaved)
+  ROUND_16_63_IMM(a, b, c, d, e, f, g, h, w0_t, w1_t, w9_t, we_t, SHA256C10);
+  ROUND_16_63_IMM(h, a, b, c, d, e, f, g, w1_t, w2_t, wa_t, wf_t, SHA256C11);
+  ROUND_16_63_IMM(g, h, a, b, c, d, e, f, w2_t, w3_t, wb_t, w0_t, SHA256C12);
+  ROUND_16_63_IMM(f, g, h, a, b, c, d, e, w3_t, w4_t, wc_t, w1_t, SHA256C13);
+  ROUND_16_63_IMM(e, f, g, h, a, b, c, d, w4_t, w5_t, wd_t, w2_t, SHA256C14);
+  ROUND_16_63_IMM(d, e, f, g, h, a, b, c, w5_t, w6_t, we_t, w3_t, SHA256C15);
+  ROUND_16_63_IMM(c, d, e, f, g, h, a, b, w6_t, w7_t, wf_t, w4_t, SHA256C16);
+  ROUND_16_63_IMM(b, c, d, e, f, g, h, a, w7_t, w8_t, w0_t, w5_t, SHA256C17);
+  ROUND_16_63_IMM(a, b, c, d, e, f, g, h, w8_t, w9_t, w1_t, w6_t, SHA256C18);
+  ROUND_16_63_IMM(h, a, b, c, d, e, f, g, w9_t, wa_t, w2_t, w7_t, SHA256C19);
+  ROUND_16_63_IMM(g, h, a, b, c, d, e, f, wa_t, wb_t, w3_t, w8_t, SHA256C1a);
+  ROUND_16_63_IMM(f, g, h, a, b, c, d, e, wb_t, wc_t, w4_t, w9_t, SHA256C1b);
+  ROUND_16_63_IMM(e, f, g, h, a, b, c, d, wc_t, wd_t, w5_t, wa_t, SHA256C1c);
+  ROUND_16_63_IMM(d, e, f, g, h, a, b, c, wd_t, we_t, w6_t, wb_t, SHA256C1d);
+  ROUND_16_63_IMM(c, d, e, f, g, h, a, b, we_t, wf_t, w7_t, wc_t, SHA256C1e);
+  ROUND_16_63_IMM(b, c, d, e, f, g, h, a, wf_t, w0_t, w8_t, wd_t, SHA256C1f);
 
-  ROUND_EXPAND();
-  ROUND_STEP(16);
+  // Rounds 32-47 (Interleaved)
+  ROUND_16_63_IMM(a, b, c, d, e, f, g, h, w0_t, w1_t, w9_t, we_t, SHA256C20);
+  ROUND_16_63_IMM(h, a, b, c, d, e, f, g, w1_t, w2_t, wa_t, wf_t, SHA256C21);
+  ROUND_16_63_IMM(g, h, a, b, c, d, e, f, w2_t, w3_t, wb_t, w0_t, SHA256C22);
+  ROUND_16_63_IMM(f, g, h, a, b, c, d, e, w3_t, w4_t, wc_t, w1_t, SHA256C23);
+  ROUND_16_63_IMM(e, f, g, h, a, b, c, d, w4_t, w5_t, wd_t, w2_t, SHA256C24);
+  ROUND_16_63_IMM(d, e, f, g, h, a, b, c, w5_t, w6_t, we_t, w3_t, SHA256C25);
+  ROUND_16_63_IMM(c, d, e, f, g, h, a, b, w6_t, w7_t, wf_t, w4_t, SHA256C26);
+  ROUND_16_63_IMM(b, c, d, e, f, g, h, a, w7_t, w8_t, w0_t, w5_t, SHA256C27);
+  ROUND_16_63_IMM(a, b, c, d, e, f, g, h, w8_t, w9_t, w1_t, w6_t, SHA256C28);
+  ROUND_16_63_IMM(h, a, b, c, d, e, f, g, w9_t, wa_t, w2_t, w7_t, SHA256C29);
+  ROUND_16_63_IMM(g, h, a, b, c, d, e, f, wa_t, wb_t, w3_t, w8_t, SHA256C2a);
+  ROUND_16_63_IMM(f, g, h, a, b, c, d, e, wb_t, wc_t, w4_t, w9_t, SHA256C2b);
+  ROUND_16_63_IMM(e, f, g, h, a, b, c, d, wc_t, wd_t, w5_t, wa_t, SHA256C2c);
+  ROUND_16_63_IMM(d, e, f, g, h, a, b, c, wd_t, we_t, w6_t, wb_t, SHA256C2d);
+  ROUND_16_63_IMM(c, d, e, f, g, h, a, b, we_t, wf_t, w7_t, wc_t, SHA256C2e);
+  ROUND_16_63_IMM(b, c, d, e, f, g, h, a, wf_t, w0_t, w8_t, wd_t, SHA256C2f);
 
-  ROUND_EXPAND();
-  ROUND_STEP(32);
+  // Rounds 48-63 (Interleaved)
+  ROUND_16_63_IMM(a, b, c, d, e, f, g, h, w0_t, w1_t, w9_t, we_t, SHA256C30);
+  ROUND_16_63_IMM(h, a, b, c, d, e, f, g, w1_t, w2_t, wa_t, wf_t, SHA256C31);
+  ROUND_16_63_IMM(g, h, a, b, c, d, e, f, w2_t, w3_t, wb_t, w0_t, SHA256C32);
+  ROUND_16_63_IMM(f, g, h, a, b, c, d, e, w3_t, w4_t, wc_t, w1_t, SHA256C33);
+  ROUND_16_63_IMM(e, f, g, h, a, b, c, d, w4_t, w5_t, wd_t, w2_t, SHA256C34);
+  ROUND_16_63_IMM(d, e, f, g, h, a, b, c, w5_t, w6_t, we_t, w3_t, SHA256C35);
+  ROUND_16_63_IMM(c, d, e, f, g, h, a, b, w6_t, w7_t, wf_t, w4_t, SHA256C36);
+  ROUND_16_63_IMM(b, c, d, e, f, g, h, a, w7_t, w8_t, w0_t, w5_t, SHA256C37);
+  ROUND_16_63_IMM(a, b, c, d, e, f, g, h, w8_t, w9_t, w1_t, w6_t, SHA256C38);
+  ROUND_16_63_IMM(h, a, b, c, d, e, f, g, w9_t, wa_t, w2_t, w7_t, SHA256C39);
+  ROUND_16_63_IMM(g, h, a, b, c, d, e, f, wa_t, wb_t, w3_t, w8_t, SHA256C3a);
+  ROUND_16_63_IMM(f, g, h, a, b, c, d, e, wb_t, wc_t, w4_t, w9_t, SHA256C3b);
+  ROUND_16_63_IMM(e, f, g, h, a, b, c, d, wc_t, wd_t, w5_t, wa_t, SHA256C3c);
+  ROUND_16_63_IMM(d, e, f, g, h, a, b, c, wd_t, we_t, w6_t, wb_t, SHA256C3d);
+  ROUND_16_63_IMM(c, d, e, f, g, h, a, b, we_t, wf_t, w7_t, wc_t, SHA256C3e);
+  ROUND_16_63_IMM(b, c, d, e, f, g, h, a, wf_t, w0_t, w8_t, wd_t, SHA256C3f);
 
-  ROUND_EXPAND();
-  ROUND_STEP(48);
+  #undef ROUND_0_15_IMM
+  #undef ROUND_16_63_IMM
 
   digest[0] += a;
   digest[1] += b;
@@ -203,9 +230,12 @@ static void sha256_process2 (const unsigned int *W, unsigned int *digest)
 #undef S1
 #undef S2
 #undef S3
-
 #undef shr32
 #undef rotl32
+#undef SHA256_STEP_OPT
+
+// --- Configuration injected from host (Placeholders) ---
+
 // first 64 bytes of code cell (constant w.r.t salt), injected from host
 __constant uchar CODE_PREFIX[64] = { <<CODE_PREFIX_BYTES>> };
 __constant uint CODE_STATE_BASE[8] = { <<CODE_STATE_BASE>> };
@@ -236,9 +266,7 @@ __constant uchar  CASE_ALT1[N_CASE_INSENSITIVE] = { <<CASE_ALT1>> };
 __constant ushort CRC16_TABLE[256] = { <<CRC16_TABLE>> };
 
 __constant uchar STATEINIT_PREFIX_LENS[N_STATEINIT_VARIANTS] = { <<STATEINIT_PREFIX_LENS>> };
-__constant uchar STATEINIT_PREFIX_VARIANTS[N_STATEINIT_VARIANTS][STATEINIT_PREFIX_MAX_LEN] = {
-    <<STATEINIT_PREFIX_MATRIX>>
-};
+// STATEINIT_PREFIX_VARIANTS is unused in the optimized kernel logic.
 
 #if N_ACTIVE > 0
 __constant uchar PREFIX_POS[N_ACTIVE] = { <<PREFIX_POS>> };
@@ -247,7 +275,7 @@ __constant uchar PREFIX_POS[N_ACTIVE] = { <<PREFIX_POS>> };
 __constant uchar PREFIX_POS_NOCRC[N_ACTIVE_NOCRC] = { <<PREFIX_POS_NOCRC>> };
 #endif
 
-// prepacked prefix contribution to message block words
+// prepacked prefix contribution to message block words (Assumed zero-padded by host)
 __constant uint PREFIX_W[N_STATEINIT_VARIANTS][16] = {
     <<PREFIX_W_MATRIX>>
 };
@@ -257,11 +285,13 @@ __constant uint SHA256_IV[8] = {
     0x510e527fu, 0x9b05688cu, 0x1f83d9abu, 0x5be0cd19u
 };
 
-// Fast CRC16-CCITT using lookup table (poly 0x1021, init 0x0000)
-inline ushort gen_crc16_fast(const uchar *data, int size)
+// Optimization: Specialized and fully unrolled CRC16-CCITT for 34 bytes.
+inline ushort gen_crc16_fast_34(const uchar *data)
 {
     ushort crc = 0;
-    for (int i = 0; i < size; i++) {
+    #pragma unroll
+    for (int i = 0; i < 34; i++) {
+        // The (& 0xff) is technically redundant if types are strictly respected, but ensures correctness.
         crc = (ushort)((crc << 8) ^ CRC16_TABLE[((crc >> 8) ^ data[i]) & 0xff]);
     }
     return crc;
@@ -279,102 +309,136 @@ __kernel void hash_main(
 {
     uint idx = get_global_id(0);
 
+    // Allocate private memory (registers)
     uint W[16];
     uint code_hash_state[8];
     uint main_hash[8];
 
     for (int iter = 0; iter < iterations; iter++) {
-        // derive 128-bit salt from base salt and (iter, idx)
+        // --- First Hash (Code Hash) ---
+
+        // derive 128-bit salt
         uint s0 = salt0 ^ (uint)iter;
         uint s1 = salt1 ^ (uint)idx;
         uint s2 = salt2;
         uint s3 = salt3;
 
+        // Prepare message block W (BE). Using optimized SWAP.
         W[0] = SWAP(s0);
         W[1] = SWAP(s1);
         W[2] = SWAP(s2);
         W[3] = SWAP(s3);
         W[4]  = 0x80000000u;
-        W[5]  = 0u;
-        W[6]  = 0u;
-        W[7]  = 0u;
-        W[8]  = 0u;
-        W[9]  = 0u;
-        W[10] = 0u;
-        W[11] = 0u;
-        W[12] = 0u;
-        W[13] = 0u;
-        W[14] = 0u;
-        W[15] = 640u; // total bits of code cell (80 bytes)
+        #pragma unroll
+        for (int i = 5; i < 15; i++) {
+            W[i] = 0u;
+        }
+        W[15] = 640u; // 80 bytes * 8 bits/byte
 
+        // Calculate code_hash_state
         #pragma unroll
         for (int i = 0; i < 8; i++) {
             code_hash_state[i] = CODE_STATE_BASE[i];
         }
         sha256_process2(W, code_hash_state);
-        #pragma unroll
-        for (int i = 0; i < 8; i++) {
-            code_hash_state[i] = SWAP(code_hash_state[i]);
-        }
+        // code_hash_state is now in Big Endian format.
 
-        uchar *ch = (uchar *)code_hash_state;
+        // --- Second Hash (Main Hash) and Checks ---
 
-        #if N_STATEINIT_VARIANTS == 5
+        // Aggressively unroll the variant loop if count is small (e.g. <= 16).
+        #if N_STATEINIT_VARIANTS > 0 && N_STATEINIT_VARIANTS <= 16
         #pragma unroll
         #endif
         for (int v = 0; v < N_STATEINIT_VARIANTS; v++) {
             uchar prefix_len = STATEINIT_PREFIX_LENS[v];
-            const int main_len = (int)prefix_len + 32; // bytes, always < 56 here
+            const int main_len = (int)prefix_len + 32;
 
+            // Initialize W (BE) from pre-packed prefix words (BE)
             #pragma unroll
             for (int i = 0; i < 16; i++) {
                 W[i] = PREFIX_W[v][i];
             }
 
-            // insert code hash bytes into pre-packed prefix words
-            for (int j = 0; j < 32; j++) {
-                int idx_b = (int)prefix_len + j;
-                int w = idx_b >> 2;
-                int shift = 24 - ((idx_b & 3) * 8);
-                W[w] |= (uint)ch[j] << shift;
+            // Optimization: Word-level Message Block Packing (Funnel Shifting).
+            // Insert code_hash_state (BE) into W (BE).
+            const uint alignment = prefix_len & 3;
+            const int start_w = prefix_len >> 2;
+
+            if (alignment == 0) {
+                // Aligned insertion
+                #pragma unroll
+                for (int i = 0; i < 8; i++) {
+                    // Use |= assuming PREFIX_W is zero-padded correctly.
+                    W[start_w + i] |= code_hash_state[i];
+                }
+            } else {
+                // Unaligned insertion (Right funnel shift for BE data).
+                const uint shift_r = alignment << 3; // alignment * 8
+                const uint shift_l = 32 - shift_r;
+
+                uint prev = 0;
+                #pragma unroll
+                for (int i = 0; i < 8; i++) {
+                    uint current = code_hash_state[i];
+                    // Funnel shift: merge prev (high part/spillover) and current (low part).
+                    W[start_w + i] |= (current >> shift_r) | prev;
+                    // Calculate spillover for the next word.
+                    prev = current << shift_l;
+                }
+                // Handle the final spillover word. (Safe because main_len < 56).
+                W[start_w + 8] |= prev;
             }
 
-            // padding bit
+            // Add padding bit
             int pad_w = main_len >> 2;
-            int pad_shift = 24 - ((main_len & 3) * 8);
+            int pad_shift = 24 - ((main_len & 3) << 3); // Optimized shift calculation
             W[pad_w] |= (uint)0x80 << pad_shift;
-            // length in bits
-            W[15] = (uint)main_len * 8u;
+            // Add length in bits (BE). Optimized multiplication.
+            W[15] = (uint)main_len << 3;
 
+            // Calculate main_hash
             #pragma unroll
             for (int i = 0; i < 8; i++) {
                 main_hash[i] = SHA256_IV[i];
             }
             sha256_process2(W, main_hash);
+
+            // Swap main_hash (BE) to LE for efficient byte extraction during checks.
             #pragma unroll
             for (int i = 0; i < 8; i++) {
                 main_hash[i] = SWAP(main_hash[i]);
             }
 
-            // --- OPTIMIZATION START ---
-            uchar *mhb = (uchar *)main_hash;
+            // --- Constraint Checking ---
             int ok = 1;
 
-            // rewrite first hash byte with FREE_HASH_MASK/FREE_HASH_VAL
-            uchar hash0 = (uchar)((mhb[0] & (~FREE_HASH_MASK)) | (FREE_HASH_VAL & FREE_HASH_MASK));
+            // Calculate hash0 (modified first byte H0). H0 is LSB of main_hash[0] (LE).
+            uchar H0 = (uchar)(main_hash[0] & 0xFF);
+            uchar hash0 = (uchar)((H0 & (~FREE_HASH_MASK)) | (FREE_HASH_VAL & FREE_HASH_MASK));
 
-            // early check on non-CRC constrained bytes
+            // Early check on non-CRC constrained bytes
 #if N_ACTIVE_NOCRC > 0
+            // Optimization: Use explicit byte extraction and rigorously preserve original logic.
             if (ok) {
                 #pragma unroll
                 for (int j = 0; j < N_ACTIVE_NOCRC; j++) {
                     int i = PREFIX_POS_NOCRC[j];
-                    uchar val = 0;
+                    uchar val;
+
+                    // Replicating the original logic:
+                    // val = (i >= 3 && i < 34) ? mhb[i - 2] : (uchar)0; (if i!=2 and 0<=i<36)
                     if (i == 2) {
                         val = hash0;
+                    } else if (i >= 3 && i < 34) {
+                        // H1..H31.
+                        val = GET_BYTE_LE_ARRAY(main_hash, i - 2);
                     } else if (i >= 0 && i < 36) {
-                        val = (i >= 3 && i < 34) ? mhb[i - 2] : (uchar)0;
+                        // i=0, 1, 34, 35. Original logic explicitly used 0 here.
+                        val = 0;
+                    } else {
+                        val = 0; // Fallback for out of bounds
                     }
+
                     if ((val & PREFIX_MASK[i]) != PREFIX_VAL[i]) {
                         ok = 0;
                         break;
@@ -384,24 +448,29 @@ __kernel void hash_main(
 #endif
 
             if (ok) {
+                // Construct the full representation array
                 uchar repr[36];
                 repr[0] = (uchar)FLAGS_HI;
                 repr[1] = (uchar)FLAGS_LO;
                 repr[2] = hash0;
 
+                // Copy remaining hash bytes (H1..H31) using optimized extraction
                 #pragma unroll
                 for (int k = 1; k < 32; k++) {
-                    repr[2 + k] = mhb[k];
+                    repr[2 + k] = GET_BYTE_LE_ARRAY(main_hash, k);
                 }
 
+                // Initialize CRC bytes (required if HAS_CRC_CONSTRAINT is false but N_CASE_INSENSITIVE uses these bytes)
                 repr[34] = 0;
                 repr[35] = 0;
 
                 if (HAS_CRC_CONSTRAINT) {
-                    ushort crc = gen_crc16_fast((uchar *)repr, 34);
+                    // Use optimized, unrolled CRC function.
+                    ushort crc = gen_crc16_fast_34((uchar *)repr);
                     repr[34] = (uchar)(crc >> 8);
                     repr[35] = (uchar)(crc & 0xffu);
 
+                    // Check CRC-dependent constraints
 #if N_ACTIVE > 0
                     #pragma unroll
                     for (int j = 0; j < N_ACTIVE; j++) {
@@ -414,15 +483,23 @@ __kernel void hash_main(
 #endif
                 }
 
+                // Check case-insensitivity constraints
 #if N_CASE_INSENSITIVE > 0
                 if (ok) {
                     #pragma unroll
                     for (int j = 0; j < N_CASE_INSENSITIVE; j++) {
                         ushort bit = CASE_BITPOS[j];
-                        int byte = (int)(bit >> 3);
+                        int byte_idx = (int)(bit >> 3);
                         int bit_in_byte = 7 - (int)(bit & 7);
-                        ushort comb = ((ushort)repr[byte] << 8) | (ushort)((byte + 1 < 36) ? repr[byte + 1] : 0);
+
+                        // Read 16 bits safely across boundary
+                        uchar byte0 = repr[byte_idx];
+                        uchar byte1 = (byte_idx + 1 < 36) ? repr[byte_idx + 1] : 0;
+
+                        ushort comb = ((ushort)byte0 << 8) | (ushort)byte1;
+                        // Extract the 6-bit value
                         uchar val6 = (uchar)((comb >> (bit_in_byte + 3)) & 0x3fu);
+
                         if ((val6 != CASE_ALT0[j]) && (val6 != CASE_ALT1[j])) {
                             ok = 0;
                             break;
@@ -431,6 +508,7 @@ __kernel void hash_main(
                 }
 #endif
 
+                // Report result if all checks pass
                 if (ok) {
                     uint slot = atomic_inc(found_counter);
                     if (slot < 1024u) {
@@ -440,7 +518,6 @@ __kernel void hash_main(
                     }
                 }
             }
-            // --- OPTIMIZATION END ---
         }
     }
 }

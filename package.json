@@ -10,11 +10,11 @@
         "benchmark:add": "jest --runTestsByPath tests/Benchmark.spec.ts --verbose --testPathIgnorePatterns=/node_modules/ --testPathIgnorePatterns=/dist/ -- --add",
         "benchmark:replace": "jest --runTestsByPath tests/Benchmark.spec.ts --verbose --testPathIgnorePatterns=/node_modules/ --testPathIgnorePatterns=/dist/ -- --replace",
         "benchmark:print": "node tests/print-benchmark.js",
-        "format": "npx prettier --write \"**/*.{js,ts,tsx,json,md,yml,yaml}\" && uv run ruff format .",
-        "format:check": "npx prettier --check \"**/*.{js,ts,tsx,json,md,yml,yaml}\" && uv run ruff format --check .",
-        "lint": "uv run ruff check . && npx eslint .",
+        "format": "prettier --write \"**/*.{js,ts,tsx,json,md,yml,yaml}\" && uv run ruff format .",
+        "format:check": "prettier --check \"**/*.{js,ts,tsx,json,md,yml,yaml}\" && uv run ruff format --check .",
+        "lint": "uv run ruff check . && eslint .",
         "check:kernel": "UV_CACHE_DIR=.uv-cache uv run python scripts/check_kernel.py",
-        "ci": "npm run format:check && npm run lint && npm run check:kernel && npm test"
+        "ci": "yarn format:check && yarn lint && yarn check:kernel && yarn test"
     },
     "dependencies": {
         "@ton/core": "~0"

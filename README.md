@@ -119,7 +119,7 @@ describe('Example', () => {
 
 ## Benchmarks
 
-Generated from [tests/results.json](tests/results.json) using [scripts/chart.py](scripts/chart.py). The data is collected via `npm run benchmark:print`.
+Generated from [tests/results.json](tests/results.json) using [scripts/chart.py](scripts/chart.py). The data is collected via `yarn benchmark:print`.
 
 ![Benchmark speedups](tests/benchmarks.png)
 

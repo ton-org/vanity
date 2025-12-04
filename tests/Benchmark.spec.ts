@@ -113,7 +113,7 @@ const chooseBenchCases = (names: string[]): BenchCase[] => {
         { name: 'start 5 cs', start: 'WERTY', caseSensitive: true },
         { name: 'start 5 ci', start: 'WeRtY', caseSensitive: false },
         { name: 'end 4 cs', end: 'WERT', caseSensitive: true },
-        { name: 'end 4 ci', end: 'WeRt', caseSensitive: false },
+        { name: 'end 5 ci', end: 'WeRtY', caseSensitive: false },
     ];
     const lower = names.join(' ').toLowerCase();
     const isRTX3Plus = /rtx\s*(3|4|5)\d{2,3}/i.test(lower);
@@ -144,7 +144,7 @@ const benchCases: BenchCase[] = (() => {
         { name: 'start 5 cs', start: 'WERTY', caseSensitive: true },
         { name: 'start 5 ci', start: 'WeRtY', caseSensitive: false },
         { name: 'end 4 cs', end: 'WERT', caseSensitive: true },
-        { name: 'end 4 ci', end: 'WeRt', caseSensitive: false },
+        { name: 'end 5 ci', end: 'WeRtY', caseSensitive: false },
     ];
 })();
 const deviceNames = new Set<string>();

@@ -70,7 +70,7 @@
         },
         {
             "title": "PR #25",
-            "timestamp": 1764879135.679,
+            "timestamp": 1764882858.415,
             "cases": [
                 {
                     "name": "start 5 cs",
@@ -94,10 +94,10 @@
                     "timedOut": true
                 },
                 {
-                    "name": "end 4 ci",
-                    "hits": 19995,
-                    "seconds": 19.20115089416504,
-                    "rate": 1041.2917491355113,
+                    "name": "end 5 ci",
+                    "hits": 738,
+                    "seconds": 19.47322678565979,
+                    "rate": 37.84683494482443,
                     "timedOut": true
                 }
             ]

@@ -112,33 +112,63 @@ def parse_case_name(name: str) -> tuple[str, int, bool] | None:
     return position, length, case_insensitive
 
 
+def _extract_rates_from_entry(entry: dict) -> dict[str, float]:
+    """Extract normalized rates for all categories from a single JSON entry."""
+    rates: dict[str, float] = {}
+
+    for case in entry.get("cases", []):
+        name = case.get("name", "")
+        rate = case.get("rate")
+
+        if not isinstance(rate, (int, float)):
+            continue
+
+        parsed = parse_case_name(name)
+        if not parsed:
+            continue
+
+        position, length, case_insensitive = parsed
+        ci_str = "ci" if case_insensitive else "cs"
+        category = f"{position} 5 {ci_str}"
+
+        rates[category] = normalize_rate(rate, length, case_insensitive)
+
+    return rates
+
+
 def extract_rates(entries: list[dict], title: str) -> dict[str, float]:
     """Extract normalized rates for each category from benchmark entries."""
     for entry in entries:
         if entry.get("title") != title:
             continue
-
-        rates = {}
-        for case in entry.get("cases", []):
-            name = case.get("name", "")
-            rate = case.get("rate")
-
-            if not isinstance(rate, (int, float)):
-                continue
-
-            parsed = parse_case_name(name)
-            if not parsed:
-                continue
-
-            position, length, case_insensitive = parsed
-            ci_str = "ci" if case_insensitive else "cs"
-            category = f"{position} 5 {ci_str}"
-
-            rates[category] = normalize_rate(rate, length, case_insensitive)
-
-        return rates
+        return _extract_rates_from_entry(entry)
 
     return {}
+
+
+def extract_latest_new_rates(entries: list[dict]) -> dict[str, float]:
+    """
+    Extract normalized rates for the "new" implementation as
+    the latest entry (by timestamp) per device, excluding the
+    old implementation baseline.
+    """
+    latest_entry: dict | None = None
+    latest_ts: float | None = None
+
+    for entry in entries:
+        if entry.get("title") == OLD_IMPL:
+            continue
+        ts = entry.get("timestamp")
+        if not isinstance(ts, (int, float)):
+            continue
+        if latest_ts is None or ts > latest_ts:
+            latest_ts = ts
+            latest_entry = entry
+
+    if latest_entry is None:
+        return {}
+
+    return _extract_rates_from_entry(latest_entry)
 
 
 def build_benchmark_data(raw_data: dict) -> list[BenchmarkResult]:
@@ -147,7 +177,10 @@ def build_benchmark_data(raw_data: dict) -> list[BenchmarkResult]:
 
     for device, entries in raw_data.items():
         old_rates = extract_rates(entries, OLD_IMPL)
-        new_rates = extract_rates(entries, NEW_IMPL)
+        # For the "new" implementation, always take the latest
+        # entry per device (by timestamp), so charts reflect the
+        # most recent benchmark run.
+        new_rates = extract_latest_new_rates(entries)
 
         if not old_rates or not new_rates:
             continue

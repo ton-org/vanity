@@ -22,7 +22,7 @@
     "devDependencies": {
         "@tact-lang/compiler": ">=1.6.13 <2.0.0",
         "@ton-community/func-js": ">=0.10.0",
-        "@ton/blueprint": ">=0.40.0",
+        "@ton/blueprint": ">=0.42.0",
         "@ton/crypto": "^3.3.0",
         "@ton/sandbox": ">=0.40.0",
         "@ton/test-utils": ">=0.11.0",

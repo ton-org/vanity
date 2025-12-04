@@ -408,6 +408,7 @@ __kernel void hash_main(
             for (int i = 0; i < 8; i++) {
                 main_hash[i] = SWAP(main_hash[i]);
             }
+            uchar *mhb = (uchar *)main_hash;
 
             // --- Constraint Checking ---
             int ok = 1;
@@ -418,25 +419,16 @@ __kernel void hash_main(
 
             // Early check on non-CRC constrained bytes
 #if N_ACTIVE_NOCRC > 0
-            // Optimization: Use explicit byte extraction and rigorously preserve original logic.
             if (ok) {
                 #pragma unroll
                 for (int j = 0; j < N_ACTIVE_NOCRC; j++) {
                     int i = PREFIX_POS_NOCRC[j];
-                    uchar val;
-
-                    // Replicating the original logic:
-                    // val = (i >= 3 && i < 34) ? mhb[i - 2] : (uchar)0; (if i!=2 and 0<=i<36)
+                    uchar val = 0;
                     if (i == 2) {
                         val = hash0;
-                    } else if (i >= 3 && i < 34) {
-                        // H1..H31.
-                        val = GET_BYTE_LE_ARRAY(main_hash, i - 2);
                     } else if (i >= 0 && i < 36) {
-                        // i=0, 1, 34, 35. Original logic explicitly used 0 here.
-                        val = 0;
-                    } else {
-                        val = 0; // Fallback for out of bounds
+                        // Original logic: non-hash/CRC bytes read as 0; hash bytes via mhb.
+                        val = (i >= 3 && i < 34) ? mhb[i - 2] : (uchar)0;
                     }
 
                     if ((val & PREFIX_MASK[i]) != PREFIX_VAL[i]) {

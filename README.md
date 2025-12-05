@@ -148,4 +148,6 @@ The key optimizations include:
 
 ## License
 
+© TON Studio
+
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for the full text.

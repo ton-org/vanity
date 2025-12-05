@@ -23,7 +23,9 @@ from PIL import Image
 # === Configuration ===
 
 RESULTS_PATH = Path(__file__).resolve().parent.parent / "tests" / "results.json"
-OUTPUT_PATH = Path(__file__).resolve().parent.parent / "tests" / "benchmarks_compact.png"
+OUTPUT_PATH = (
+    Path(__file__).resolve().parent.parent / "tests" / "benchmarks_compact.png"
+)
 LOGO_PATH = Path(__file__).resolve().parent / "ton-studio.png"
 
 OLD_IMPL = "ton-community/vanity-contract"
@@ -276,7 +278,6 @@ def create_compact_chart(results: list[CompactResult]) -> plt.Figure:
 
     # Find max rate for scaling (use actual rates, not speedup)
     max_rate = max(r.new_rate for r in results)
-    min_rate = min(r.old_rate for r in results)
 
     # Plot bars
     for cat_idx, (cat_key, cat_label) in enumerate(COMPACT_CATEGORIES):
@@ -322,8 +323,10 @@ def create_compact_chart(results: list[CompactResult]) -> plt.Figure:
             )
 
     # Use power scale to compress tall bars while keeping old bars small
-    from matplotlib.scale import FuncScale
-    ax.set_yscale("function", functions=(lambda x: np.power(x, 0.35), lambda x: np.power(x, 1/0.35)))
+    ax.set_yscale(
+        "function",
+        functions=(lambda x: np.power(x, 0.35), lambda x: np.power(x, 1 / 0.35)),
+    )
     ax.set_ylim(0, max_rate * 1.3)
     ax.set_xlim(-0.2, x - group_gap + 0.2)
 

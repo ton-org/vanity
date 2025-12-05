@@ -406,7 +406,7 @@ def create_chart(results: list[BenchmarkResult]) -> plt.Figure:
     fig.text(
         content_center_x,
         0.91,
-        "Speedup measured with default settings on prefix and suffix lengths from 4 to 6 characters",
+        "Speedup measured with default settings on prefix and suffix lengths from 4 to 7 characters",
         ha="center",
         va="top",
         fontsize=10,

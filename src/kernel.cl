@@ -245,9 +245,10 @@ __constant uint CODE_STATE_BASE[8] = { <<CODE_STATE_BASE>> };
 #define FLAGS_LO <<FLAGS_LO>>
 #define FREE_HASH_MASK <<FREE_HASH_MASK>>
 #define FREE_HASH_VAL  <<FREE_HASH_VAL>>
+#define NEED_CRC <<NEED_CRC>>
+#define HASH0_COUNT <<HASH0_COUNT>>
 #define N_STATEINIT_VARIANTS <<N_STATEINIT_VARIANTS>>
 #define STATEINIT_PREFIX_MAX_LEN <<STATEINIT_PREFIX_MAX_LEN>>
-#define HAS_CRC_CONSTRAINT <<HAS_CRC_CONSTRAINT>>
 #define N_ACTIVE <<N_ACTIVE>>
 #define N_ACTIVE_NOCRC <<N_ACTIVE_NOCRC>>
 #define N_CASE_INSENSITIVE <<N_CASE_INSENSITIVE>>
@@ -255,6 +256,10 @@ __constant uint CODE_STATE_BASE[8] = { <<CODE_STATE_BASE>> };
 // Byte-level masks for prefix matching (36 bytes)
 __constant uchar PREFIX_MASK[36] = { <<PREFIX_MASK>> };
 __constant uchar PREFIX_VAL[36]  = { <<PREFIX_VAL>> };
+
+// Allowed values for the first hash byte (repr[2]) given fixedPrefixLength=8
+// and any forced bits coming from the start pattern.
+__constant uchar HASH0_VALUES[256] = { <<HASH0_VALUES>> };
 
 #if N_CASE_INSENSITIVE > 0
 __constant ushort CASE_BITPOS[N_CASE_INSENSITIVE] = { <<CASE_BITPOS>> };
@@ -412,31 +417,18 @@ __kernel void hash_main(
             // --- Constraint Checking ---
             int ok = 1;
 
-            // Calculate hash0 (modified first byte H0). H0 is LSB of main_hash[0] (LE).
-            uchar H0 = (uchar)(main_hash[0] & 0xFF);
-            uchar hash0 = (uchar)((H0 & (~FREE_HASH_MASK)) | (FREE_HASH_VAL & FREE_HASH_MASK));
-
-            // Early check on non-CRC constrained bytes
+            // Early check on non-CRC constrained bytes. This must not depend on
+            // the first hash byte, which is swept later via HASH0_VALUES.
 #if N_ACTIVE_NOCRC > 0
-            // Optimization: Use explicit byte extraction and rigorously preserve original logic.
             if (ok) {
                 #pragma unroll
                 for (int j = 0; j < N_ACTIVE_NOCRC; j++) {
                     int i = PREFIX_POS_NOCRC[j];
-                    uchar val;
+                    uchar val = 0;
 
-                    // Replicating the original logic:
-                    // val = (i >= 3 && i < 34) ? mhb[i - 2] : (uchar)0; (if i!=2 and 0<=i<36)
-                    if (i == 2) {
-                        val = hash0;
-                    } else if (i >= 3 && i < 34) {
-                        // H1..H31.
+                    if (i >= 3 && i < 34) {
+                        // Bytes 3..33 map to hash bytes H1..H31.
                         val = GET_BYTE_LE_ARRAY(main_hash, i - 2);
-                    } else if (i >= 0 && i < 36) {
-                        // i=0, 1, 34, 35. Original logic explicitly used 0 here.
-                        val = 0;
-                    } else {
-                        val = 0; // Fallback for out of bounds
                     }
 
                     if ((val & PREFIX_MASK[i]) != PREFIX_VAL[i]) {
@@ -447,77 +439,123 @@ __kernel void hash_main(
             }
 #endif
 
-            if (ok) {
-                // Construct the full representation array
-                uchar repr[36];
-                repr[0] = (uchar)FLAGS_HI;
-                repr[1] = (uchar)FLAGS_LO;
+            if (!ok) {
+                continue;
+            }
+
+            // Construct the representation prefix (flags/workchain + hash tail).
+            uchar repr[36];
+            repr[0] = (uchar)FLAGS_HI;
+            repr[1] = (uchar)FLAGS_LO;
+
+            // Copy remaining hash bytes (H1..H31) using optimized extraction
+            #pragma unroll
+            for (int k = 1; k < 32; k++) {
+                repr[2 + k] = GET_BYTE_LE_ARRAY(main_hash, k);
+            }
+
+            // Initialize CRC bytes (may stay zero when NEED_CRC == 0).
+            repr[34] = 0;
+            repr[35] = 0;
+
+            // Fast path: no CRC needed at all (no constraints on CRC bytes and
+            // no case-insensitive digits touching them). Keep legacy behavior:
+            // rewrite first hash byte once using FREE_HASH_* and only run CI.
+#if NEED_CRC == 0
+            {
+                uchar H0 = (uchar)(main_hash[0] & 0xFF);
+                uchar hash0 = (uchar)((H0 & (~FREE_HASH_MASK)) | (FREE_HASH_VAL & FREE_HASH_MASK));
                 repr[2] = hash0;
 
-                // Copy remaining hash bytes (H1..H31) using optimized extraction
-                #pragma unroll
-                for (int k = 1; k < 32; k++) {
-                    repr[2 + k] = GET_BYTE_LE_ARRAY(main_hash, k);
-                }
+                int ok_local = 1;
 
-                // Initialize CRC bytes (required if HAS_CRC_CONSTRAINT is false but N_CASE_INSENSITIVE uses these bytes)
-                repr[34] = 0;
-                repr[35] = 0;
-
-                if (HAS_CRC_CONSTRAINT) {
-                    // Use optimized, unrolled CRC function.
-                    ushort crc = gen_crc16_fast_34((uchar *)repr);
-                    repr[34] = (uchar)(crc >> 8);
-                    repr[35] = (uchar)(crc & 0xffu);
-
-                    // Check CRC-dependent constraints
-#if N_ACTIVE > 0
-                    #pragma unroll
-                    for (int j = 0; j < N_ACTIVE; j++) {
-                        int i = PREFIX_POS[j];
-                        if ((repr[i] & PREFIX_MASK[i]) != PREFIX_VAL[i]) {
-                            ok = 0;
-                            break;
-                        }
-                    }
-#endif
-                }
-
-                // Check case-insensitivity constraints
-#if N_CASE_INSENSITIVE > 0
-                if (ok) {
+                // Case-insensitivity constraints (never touch CRC bytes here).
+        #if N_CASE_INSENSITIVE > 0
+                if (ok_local) {
                     #pragma unroll
                     for (int j = 0; j < N_CASE_INSENSITIVE; j++) {
                         ushort bit = CASE_BITPOS[j];
                         int byte_idx = (int)(bit >> 3);
                         int bit_in_byte = 7 - (int)(bit & 7);
 
-                        // Read 16 bits safely across boundary
                         uchar byte0 = repr[byte_idx];
                         uchar byte1 = (byte_idx + 1 < 36) ? repr[byte_idx + 1] : 0;
 
                         ushort comb = ((ushort)byte0 << 8) | (ushort)byte1;
-                        // Extract the 6-bit value
                         uchar val6 = (uchar)((comb >> (bit_in_byte + 3)) & 0x3fu);
 
                         if ((val6 != CASE_ALT0[j]) && (val6 != CASE_ALT1[j])) {
-                            ok = 0;
+                            ok_local = 0;
                             break;
                         }
                     }
                 }
-#endif
+        #endif
 
-                // Report result if all checks pass
-                if (ok) {
+                if (ok_local) {
                     uint slot = atomic_inc(found_counter);
                     if (slot < 1024u) {
-                        res[slot * 3]     = (uint)iter;
-                        res[slot * 3 + 1] = idx;
-                        res[slot * 3 + 2] = (uint)v;
+                        res[slot * 4]     = (uint)iter;
+                        res[slot * 4 + 1] = idx;
+                        res[slot * 4 + 2] = (uint)v;
+                        res[slot * 4 + 3] = (uint)hash0;
                     }
                 }
             }
+#else  // NEED_CRC == 1
+            // Full CRC sweep over all admissible first hash bytes.
+            for (int t = 0; t < HASH0_COUNT; t++) {
+                uchar hash0 = HASH0_VALUES[t];
+                repr[2] = hash0;
+
+                // Compute CRC16 over the first 34 bytes.
+                ushort crc = gen_crc16_fast_34((uchar *)repr);
+                repr[34] = (uchar)(crc >> 8);
+                repr[35] = (uchar)(crc & 0xffu);
+
+                int ok_local = 1;
+
+                // CRC-dependent byte-mask constraints: only bytes 34 and 35.
+                if (PREFIX_MASK[34] && ((repr[34] & PREFIX_MASK[34]) != PREFIX_VAL[34])) {
+                    ok_local = 0;
+                }
+                if (ok_local && PREFIX_MASK[35] && ((repr[35] & PREFIX_MASK[35]) != PREFIX_VAL[35])) {
+                    ok_local = 0;
+                }
+
+        #if N_CASE_INSENSITIVE > 0
+                if (ok_local) {
+                    #pragma unroll
+                    for (int j = 0; j < N_CASE_INSENSITIVE; j++) {
+                        ushort bit = CASE_BITPOS[j];
+                        int byte_idx = (int)(bit >> 3);
+                        int bit_in_byte = 7 - (int)(bit & 7);
+
+                        uchar byte0 = repr[byte_idx];
+                        uchar byte1 = (byte_idx + 1 < 36) ? repr[byte_idx + 1] : 0;
+
+                        ushort comb = ((ushort)byte0 << 8) | (ushort)byte1;
+                        uchar val6 = (uchar)((comb >> (bit_in_byte + 3)) & 0x3fu);
+
+                        if ((val6 != CASE_ALT0[j]) && (val6 != CASE_ALT1[j])) {
+                            ok_local = 0;
+                            break;
+                        }
+                    }
+                }
+        #endif
+
+                if (ok_local) {
+                    uint slot = atomic_inc(found_counter);
+                    if (slot < 1024u) {
+                        res[slot * 4]     = (uint)iter;
+                        res[slot * 4 + 1] = idx;
+                        res[slot * 4 + 2] = (uint)v;
+                        res[slot * 4 + 3] = (uint)hash0;
+                    }
+                }
+            }
+#endif
         }
     }
 }

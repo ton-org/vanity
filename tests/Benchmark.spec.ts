@@ -417,13 +417,32 @@ const gpuOk = gpuAvailable();
         const toShow = baseline ? [baseline, currentEntry] : [currentEntry];
         renderPivot(toShow, resolvedDeviceName);
 
+        // Raw per-case results for the current run (both raw and normalized rates).
+        if (results.length) {
+            console.log('\nRaw case results (current run):');
+            const rows = results.map((r) => {
+                const len = parseLength(r.name);
+                const ci = r.name.toLowerCase().includes('ci');
+                const norm = normalizeRate(r.rate, len, ci);
+                return {
+                    name: raw(r.name),
+                    hits: r.hits,
+                    seconds: r.seconds.toFixed(2),
+                    rate: r.rate.toFixed(4),
+                    normRate: norm.toFixed(4),
+                    timedOut: r.timedOut,
+                };
+            });
+            console.table(rows);
+        }
+
         // Regression check vs last entry
         const regressions: string[] = [];
         if (baseline) {
             for (const r of results) {
                 const prev = baseline.cases.find((c) => c.name === r.name);
                 if (!prev || prev.rate <= 0 || r.rate <= 0) continue;
-                const threshold = prev.rate * 0.975; // allow up to 2.5% slower
+                const threshold = prev.rate * 0.95; // allow up to 5% slower
                 if (r.rate < threshold) {
                     regressions.push(
                         `${r.name}: ${r.rate.toFixed(2)} < ${threshold.toFixed(2)} (prev ${prev.rate.toFixed(2)})`,

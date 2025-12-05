@@ -112,8 +112,8 @@ const chooseBenchCases = (names: string[]): BenchCase[] => {
     const defaults: BenchCase[] = [
         { name: 'start 5 cs', start: 'WERTY', caseSensitive: true },
         { name: 'start 5 ci', start: 'WeRtY', caseSensitive: false },
-        { name: 'end 4 cs', end: 'WERT', caseSensitive: true },
-        { name: 'end 5 ci', end: 'WeRtY', caseSensitive: false },
+        { name: 'end 5 cs', end: 'WERTY', caseSensitive: true },
+        { name: 'end 6 ci', end: 'WeRtYu', caseSensitive: false },
     ];
     const lower = names.join(' ').toLowerCase();
     const isRTX3Plus = /rtx\s*(3|4|5)\d{2,3}/i.test(lower);
@@ -121,8 +121,8 @@ const chooseBenchCases = (names: string[]): BenchCase[] => {
     return [
         { name: 'start 6 cs', start: 'WERTYU', caseSensitive: true },
         { name: 'start 6 ci', start: 'WeRtYu', caseSensitive: false },
-        { name: 'end 5 cs', end: 'WERTY', caseSensitive: true },
-        { name: 'end 5 ci', end: 'WeRtY', caseSensitive: false },
+        { name: 'end 6 cs', end: 'WERTYU', caseSensitive: true },
+        { name: 'end 7 ci', end: 'WeRtYuI', caseSensitive: false },
     ];
 };
 
@@ -143,8 +143,8 @@ const benchCases: BenchCase[] = (() => {
     return [
         { name: 'start 5 cs', start: 'WERTY', caseSensitive: true },
         { name: 'start 5 ci', start: 'WeRtY', caseSensitive: false },
-        { name: 'end 4 cs', end: 'WERT', caseSensitive: true },
-        { name: 'end 5 ci', end: 'WeRtY', caseSensitive: false },
+        { name: 'end 5 cs', end: 'WERTY', caseSensitive: true },
+        { name: 'end 6 ci', end: 'WeRtYu', caseSensitive: false },
     ];
 })();
 const deviceNames = new Set<string>();

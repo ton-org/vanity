@@ -101,6 +101,40 @@
                     "timedOut": true
                 }
             ]
+        },
+        {
+            "title": "PR #31",
+            "timestamp": 1764941427.997,
+            "cases": [
+                {
+                    "name": "start 5 cs",
+                    "hits": 1422,
+                    "seconds": 19.601548194885254,
+                    "rate": 72.49427371103216,
+                    "timedOut": true
+                },
+                {
+                    "name": "start 5 ci",
+                    "hits": 5450,
+                    "seconds": 19.565678119659424,
+                    "rate": 278.4978862820447,
+                    "timedOut": true
+                },
+                {
+                    "name": "end 5 cs",
+                    "hits": 4086,
+                    "seconds": 18.773109912872314,
+                    "rate": 217.59847030986614,
+                    "timedOut": true
+                },
+                {
+                    "name": "end 6 ci",
+                    "hits": 587,
+                    "seconds": 18.70980215072632,
+                    "rate": 31.320480851650874,
+                    "timedOut": true
+                }
+            ]
         }
     ],
     "NVIDIA GeForce RTX 4090": [

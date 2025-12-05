@@ -295,40 +295,40 @@ def crc16(data: bytes, table: Sequence[int]) -> int:
 
 
 def compute_hit_prob(kernel_cfg: "KernelConfig") -> float:
-    """Probability a single candidate address passes all kernel-side filters.
+    """Approximate probability a single *address* matches all kernel-side filters.
 
-    We treat non-CRC and CRC-dependent constraints separately to account for
-    the fact that the first hash byte is brute-forced to solve CRC16.
+    We treat every iteration as one full candidate address (including CRC).
+    To avoid double-counting bits that are already covered by case-insensitive
+    digit checks, we exclude mask bits that fall under any 6-bit CI window.
     """
 
-    # Non-CRC byte masks (0..33)
-    bits_fixed_noncrc = sum(int(b).bit_count() for b in kernel_cfg.prefix_mask[:34])
-    # CRC byte masks (34..35)
-    bits_fixed_crc = int(kernel_cfg.prefix_mask[34]).bit_count() + int(
-        kernel_cfg.prefix_mask[35]
-    ).bit_count()
+    # Build a set of bit indices (0..287) that belong to any CI digit.
+    ci_bits = set()
+    for base in kernel_cfg.ci_bitpos:
+        for k in range(6):
+            bi = base + k
+            if 0 <= bi < TOTAL_BITS:
+                ci_bits.add(bi)
 
-    # Case-insensitive digits: split into those that touch CRC digits (bitpos >= 270)
-    n_ci_crc = sum(1 for b in kernel_cfg.ci_bitpos if b >= 270)
-    n_ci_noncrc = len(kernel_cfg.ci_bitpos) - n_ci_crc
+    # Count fixed bits outside CI windows.
+    bits_fixed_nonci = 0
+    for byte_idx, mask_byte in enumerate(kernel_cfg.prefix_mask):
+        if mask_byte == 0:
+            continue
+        for offset in range(8):
+            if not (mask_byte & (1 << offset)):
+                continue
+            bit_index = byte_idx * 8 + (7 - offset)
+            if bit_index in ci_bits:
+                continue
+            bits_fixed_nonci += 1
 
-    p_case_noncrc = (1.0 / 32.0) ** n_ci_noncrc
-    p_case_crc = (1.0 / 32.0) ** n_ci_crc
+    p_mask_nonci = 2.0 ** (-bits_fixed_nonci)
 
-    p_noncrc = (2.0 ** (-bits_fixed_noncrc)) * p_case_noncrc
+    # Case-insensitive chars checked via CASE_*: each allows 2 of 64 values.
+    p_ci = (1.0 / 32.0) ** len(kernel_cfg.ci_bitpos)
 
-    if bits_fixed_crc == 0:
-        p_crc_mask = 1.0
-    else:
-        # Brute-forcing the first hash byte gives HASH0_COUNT attempts against
-        # the CRC-fixed bits. Clamp at 1 when we cover the entire space.
-        p_crc_mask = min(
-            1.0, float(kernel_cfg.hash0_count) / float(2**bits_fixed_crc)
-        )
-
-    p_crc = p_crc_mask * p_case_crc
-
-    return p_noncrc * p_crc
+    return p_mask_nonci * p_ci
 
 
 # -----------------------------------------------------------------------------
@@ -1083,15 +1083,19 @@ def device_thread(
                     break
 
         elapsed = time.time() - start
+        crc_factor = cfg.hash0_count if cfg.need_crc else 1
         total_batch_iters = (
-            params.global_threads * params.iterations * len(cfg.stateinit_variants)
+            params.global_threads
+            * params.iterations
+            * len(cfg.stateinit_variants)
+            * crc_factor
         )
         speed_raw = (
             params.global_threads * params.iterations / elapsed / 1e6
             if elapsed > 0
             else 0.0
         )
-        speed_eff = speed_raw * len(cfg.stateinit_variants)
+        speed_eff = speed_raw * len(cfg.stateinit_variants) * crc_factor
 
         with ctx.status_lock:
             ctx.status.speed_raw = speed_raw
@@ -1101,7 +1105,7 @@ def device_thread(
             # misses are now fatal; keep zero
             ctx.status.found = ctx.n_found
             ctx.status.threads = params.global_threads
-            ctx.status.iterations = params.iterations
+            ctx.status.iterations = params.iterations * crc_factor
             ctx.status.local = params.local_size
             ctx.status.updated = time.time()
 

@@ -239,6 +239,40 @@
                     "timedOut": true
                 }
             ]
+        },
+        {
+            "title": "PR #31",
+            "timestamp": 1764957780.124,
+            "cases": [
+                {
+                    "name": "start 6 cs",
+                    "hits": 275,
+                    "seconds": 19.23387598991394,
+                    "rate": 14.245698586373488,
+                    "timedOut": true
+                },
+                {
+                    "name": "start 6 ci",
+                    "hits": 2166,
+                    "seconds": 19.39110827445984,
+                    "rate": 111.64911099235809,
+                    "timedOut": true
+                },
+                {
+                    "name": "end 6 cs",
+                    "hits": 814,
+                    "seconds": 19.434014558792114,
+                    "rate": 41.833868012216335,
+                    "timedOut": true
+                },
+                {
+                    "name": "end 7 ci",
+                    "hits": 92,
+                    "seconds": 18.25980496406555,
+                    "rate": 4.983623876546534,
+                    "timedOut": true
+                }
+            ]
         }
     ]
 }

@@ -398,7 +398,7 @@ def create_compact_chart(results: list[CompactResult]) -> plt.Figure:
     fig.text(
         0.98,
         0.03,
-        "Chart is log-scale. Old scores are gray, new scores are blue. Evaluated on RTX 4090 with 5-6 char case-insensitive patterns.",
+        "Chart is log-scale. Old scores are gray, new scores are blue. Evaluated on RTX 4090 with 5-7 char case-insensitive patterns.",
         ha="right",
         va="bottom",
         fontsize=8,

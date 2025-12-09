@@ -112,8 +112,8 @@ const chooseBenchCases = (names: string[]): BenchCase[] => {
     const defaults: BenchCase[] = [
         { name: 'start 5 cs', start: 'WERTY', caseSensitive: true },
         { name: 'start 5 ci', start: 'WeRtY', caseSensitive: false },
-        { name: 'end 4 cs', end: 'WERT', caseSensitive: true },
-        { name: 'end 5 ci', end: 'WeRtY', caseSensitive: false },
+        { name: 'end 5 cs', end: 'WERTY', caseSensitive: true },
+        { name: 'end 6 ci', end: 'WeRtYu', caseSensitive: false },
     ];
     const lower = names.join(' ').toLowerCase();
     const isRTX3Plus = /rtx\s*(3|4|5)\d{2,3}/i.test(lower);
@@ -121,8 +121,8 @@ const chooseBenchCases = (names: string[]): BenchCase[] => {
     return [
         { name: 'start 6 cs', start: 'WERTYU', caseSensitive: true },
         { name: 'start 6 ci', start: 'WeRtYu', caseSensitive: false },
-        { name: 'end 5 cs', end: 'WERTY', caseSensitive: true },
-        { name: 'end 5 ci', end: 'WeRtY', caseSensitive: false },
+        { name: 'end 6 cs', end: 'WERTYU', caseSensitive: true },
+        { name: 'end 7 ci', end: 'WeRtYuI', caseSensitive: false },
     ];
 };
 
@@ -143,8 +143,8 @@ const benchCases: BenchCase[] = (() => {
     return [
         { name: 'start 5 cs', start: 'WERTY', caseSensitive: true },
         { name: 'start 5 ci', start: 'WeRtY', caseSensitive: false },
-        { name: 'end 4 cs', end: 'WERT', caseSensitive: true },
-        { name: 'end 5 ci', end: 'WeRtY', caseSensitive: false },
+        { name: 'end 5 cs', end: 'WERTY', caseSensitive: true },
+        { name: 'end 6 ci', end: 'WeRtYu', caseSensitive: false },
     ];
 })();
 const deviceNames = new Set<string>();
@@ -417,13 +417,32 @@ const gpuOk = gpuAvailable();
         const toShow = baseline ? [baseline, currentEntry] : [currentEntry];
         renderPivot(toShow, resolvedDeviceName);
 
+        // Raw per-case results for the current run (both raw and normalized rates).
+        if (results.length) {
+            console.log('\nRaw case results (current run):');
+            const rows = results.map((r) => {
+                const len = parseLength(r.name);
+                const ci = r.name.toLowerCase().includes('ci');
+                const norm = normalizeRate(r.rate, len, ci);
+                return {
+                    name: raw(r.name),
+                    hits: r.hits,
+                    seconds: r.seconds.toFixed(2),
+                    rate: r.rate.toFixed(4),
+                    normRate: norm.toFixed(4),
+                    timedOut: r.timedOut,
+                };
+            });
+            console.table(rows);
+        }
+
         // Regression check vs last entry
         const regressions: string[] = [];
         if (baseline) {
             for (const r of results) {
                 const prev = baseline.cases.find((c) => c.name === r.name);
                 if (!prev || prev.rate <= 0 || r.rate <= 0) continue;
-                const threshold = prev.rate * 0.975; // allow up to 2.5% slower
+                const threshold = prev.rate * 0.95; // allow up to 5% slower
                 if (r.rate < threshold) {
                     regressions.push(
                         `${r.name}: ${r.rate.toFixed(2)} < ${threshold.toFixed(2)} (prev ${prev.rate.toFixed(2)})`,

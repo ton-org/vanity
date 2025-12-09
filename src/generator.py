@@ -66,7 +66,9 @@ class KernelConfig:
     free_hash_val: int
     prefix_mask: List[int]
     prefix_val: List[int]
-    has_crc: int
+    hash0_values: List[int]
+    hash0_count: int
+    need_crc: int
     prefix_pos: List[int]
     prefix_pos_nocrc: List[int]
     stateinit_variants: List[bytes]
@@ -110,7 +112,7 @@ class SearchStats:
 
 PRINT_INTERVAL = 1.0  # seconds between status lines
 RES_SLOTS = 1024
-RES_SLOT_WORDS = 3
+RES_SLOT_WORDS = 4
 RES_WORDS = RES_SLOTS * RES_SLOT_WORDS
 
 # Address layout constants (bytes and bits)
@@ -293,16 +295,40 @@ def crc16(data: bytes, table: Sequence[int]) -> int:
 
 
 def compute_hit_prob(kernel_cfg: "KernelConfig") -> float:
-    """Probability a single candidate address passes all kernel-side filters."""
+    """Approximate probability a single *address* matches all kernel-side filters.
 
-    # Bits fixed via byte masks (includes CRC bits when present)
-    bits_fixed = sum(int(b).bit_count() for b in kernel_cfg.prefix_mask)
-    p_mask = 2.0 ** (-bits_fixed)
+    We treat every iteration as one full candidate address (including CRC).
+    To avoid double-counting bits that are already covered by case-insensitive
+    digit checks, we exclude mask bits that fall under any 6-bit CI window.
+    """
+
+    # Build a set of bit indices (0..287) that belong to any CI digit.
+    ci_bits = set()
+    for base in kernel_cfg.ci_bitpos:
+        for k in range(6):
+            bi = base + k
+            if 0 <= bi < TOTAL_BITS:
+                ci_bits.add(bi)
+
+    # Count fixed bits outside CI windows.
+    bits_fixed_nonci = 0
+    for byte_idx, mask_byte in enumerate(kernel_cfg.prefix_mask):
+        if mask_byte == 0:
+            continue
+        for offset in range(8):
+            if not (mask_byte & (1 << offset)):
+                continue
+            bit_index = byte_idx * 8 + (7 - offset)
+            if bit_index in ci_bits:
+                continue
+            bits_fixed_nonci += 1
+
+    p_mask_nonci = 2.0 ** (-bits_fixed_nonci)
 
     # Case-insensitive chars checked via CASE_*: each allows 2 of 64 values.
     p_ci = (1.0 / 32.0) ** len(kernel_cfg.ci_bitpos)
 
-    return p_mask * p_ci
+    return p_mask_nonci * p_ci
 
 
 # -----------------------------------------------------------------------------
@@ -674,12 +700,30 @@ def build_kernel_config(cli: CliConfig, owner_raw: bytes) -> Tuple[KernelConfig,
             bit = next(iter(allowed_bits))
             set_mask_bit(prefix_mask, prefix_val, bit_index, bit)
 
-    has_crc = 1 if (prefix_mask[34] or prefix_mask[35]) else 0
     prefix_pos = [i for i, m in enumerate(prefix_mask) if m]
-    prefix_pos_nocrc = [i for i in prefix_pos if i < 34]
+    # Never use byte 2 (first hash byte) in early non-CRC checks; it is swept.
+    prefix_pos_nocrc = [i for i in prefix_pos if i < 34 and i != 2]
 
-    # StateInit variants
-    fixed_prefix_lengths = [8] if cli.start else [None] + list(range(9))
+    # We must compute CRC whenever either CRC bytes are constrained or there is
+    # a case-insensitive digit that overlaps CRC bits (digits 45..47).
+    need_crc = int(
+        (prefix_mask[34] | prefix_mask[35]) != 0 or any(b >= 270 for b in ci_bitpos)
+    )
+
+    # First hash byte sweep domain: all values compatible with forced bits from
+    # the start pattern that land in the first hash byte.
+    fixed_mask = free_mask
+    fixed_val = free_val
+    hash0_values = [
+        b for b in range(256) if (b & fixed_mask) == (fixed_val & fixed_mask)
+    ]
+    hash0_count = len(hash0_values)
+    # Pad to 256 entries for a fixed-size __constant array in the kernel.
+    if hash0_count < 256:
+        hash0_values = hash0_values + [0] * (256 - hash0_count)
+
+    # StateInit variants: always use fixedPrefixLength = 8
+    fixed_prefix_lengths = [8]
     special_variants: List[Optional[Tuple[int, int]]] = [
         None,
         (0, 0),
@@ -716,7 +760,9 @@ def build_kernel_config(cli: CliConfig, owner_raw: bytes) -> Tuple[KernelConfig,
         free_hash_val=free_val,
         prefix_mask=prefix_mask,
         prefix_val=prefix_val,
-        has_crc=has_crc,
+        hash0_values=hash0_values,
+        hash0_count=hash0_count,
+        need_crc=need_crc,
         prefix_pos=prefix_pos,
         prefix_pos_nocrc=prefix_pos_nocrc,
         stateinit_variants=stateinit_variants,
@@ -769,7 +815,9 @@ def render_kernel(kernel_cfg: KernelConfig) -> str:
     )
     repl("<<PREFIX_MASK>>", ", ".join(str(b) for b in kernel_cfg.prefix_mask))
     repl("<<PREFIX_VAL>>", ", ".join(str(b) for b in kernel_cfg.prefix_val))
-    repl("<<HAS_CRC_CONSTRAINT>>", str(kernel_cfg.has_crc))
+    repl("<<NEED_CRC>>", str(kernel_cfg.need_crc))
+    repl("<<HASH0_COUNT>>", str(kernel_cfg.hash0_count))
+    repl("<<HASH0_VALUES>>", ", ".join(str(v) for v in kernel_cfg.hash0_values))
     repl("<<N_ACTIVE>>", str(len(kernel_cfg.prefix_pos)))
     repl("<<N_ACTIVE_NOCRC>>", str(len(kernel_cfg.prefix_pos_nocrc)))
     repl("<<PREFIX_POS>>", ", ".join(str(i) for i in kernel_cfg.prefix_pos))
@@ -868,6 +916,7 @@ def process_hit(
     iter_idx: int,
     idx: int,
     variant_idx: int,
+    hash0: int,
 ) -> tuple[bool, str]:
     """Rebuild candidate, verify, and persist. Returns (ok, reason)."""
 
@@ -890,15 +939,13 @@ def process_hit(
     main_data.extend(code_hash)
     main_hash = hashlib.sha256(main_data).digest()
 
+    # Sanity-check hash0 against forced bits derived from the start pattern.
+    if (hash0 & cfg.free_hash_mask) != (cfg.free_hash_val & cfg.free_hash_mask):
+        return False, "hash0 constraint mismatch"
+
     repr_bytes = bytearray(TOTAL_BYTES)
     repr_bytes[0] = cfg.flags_hi
     repr_bytes[1] = cfg.flags_lo
-
-    # Rewrite first hash byte with free bits
-    hash0 = main_hash[0]
-    hash0 = (hash0 & (~cfg.free_hash_mask & 0xFF)) | (
-        cfg.free_hash_val & cfg.free_hash_mask
-    )
     repr_bytes[2] = hash0
     repr_bytes[3:34] = main_hash[1:32]
 
@@ -1023,7 +1070,10 @@ def device_thread(
                 iter_idx = int(res_host[slot * RES_SLOT_WORDS + 0])
                 idx = int(res_host[slot * RES_SLOT_WORDS + 1])
                 variant_idx = int(res_host[slot * RES_SLOT_WORDS + 2])
-                ok, reason = process_hit(ctx, base_salt, iter_idx, idx, variant_idx)
+                hash0 = int(res_host[slot * RES_SLOT_WORDS + 3] & 0xFF)
+                ok, reason = process_hit(
+                    ctx, base_salt, iter_idx, idx, variant_idx, hash0
+                )
                 if not ok:
                     print(
                         f"Validation failed: {reason} (iter={iter_idx}, idx={idx}, variant={variant_idx})",
@@ -1036,15 +1086,19 @@ def device_thread(
                     break
 
         elapsed = time.time() - start
+        crc_factor = cfg.hash0_count if cfg.need_crc else 1
         total_batch_iters = (
-            params.global_threads * params.iterations * len(cfg.stateinit_variants)
+            params.global_threads
+            * params.iterations
+            * len(cfg.stateinit_variants)
+            * crc_factor
         )
         speed_raw = (
             params.global_threads * params.iterations / elapsed / 1e6
             if elapsed > 0
             else 0.0
         )
-        speed_eff = speed_raw * len(cfg.stateinit_variants)
+        speed_eff = speed_raw * len(cfg.stateinit_variants) * crc_factor
 
         with ctx.status_lock:
             ctx.status.speed_raw = speed_raw
@@ -1054,7 +1108,7 @@ def device_thread(
             # misses are now fatal; keep zero
             ctx.status.found = ctx.n_found
             ctx.status.threads = params.global_threads
-            ctx.status.iterations = params.iterations
+            ctx.status.iterations = params.iterations * crc_factor
             ctx.status.local = params.local_size
             ctx.status.updated = time.time()
 

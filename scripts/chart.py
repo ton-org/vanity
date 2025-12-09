@@ -261,6 +261,11 @@ def create_chart(results: list[BenchmarkResult]) -> plt.Figure:
         raise ValueError("No valid speedup values found")
     max_speedup = max(speedups)
 
+    # Keep a small, data-driven cushion so large new results don't leave huge empty space
+    # while still guaranteeing labels stay inside the axes.
+    LABEL_PAD = 0.08  # label placed at speedup * (1 + LABEL_PAD)
+    RIGHT_PAD = 0.12  # extra headroom beyond the farthest label
+
     # Calculate positions and plot (reversed so first category is at TOP)
     y_positions = {}
     current_y = 0
@@ -295,7 +300,7 @@ def create_chart(results: list[BenchmarkResult]) -> plt.Figure:
 
             # Speedup label
             ax.text(
-                speedup * 1.08,
+                speedup * (1 + LABEL_PAD),
                 y + bar_height / 2,
                 f"×{speedup:,.0f}",
                 va="center",
@@ -335,7 +340,8 @@ def create_chart(results: list[BenchmarkResult]) -> plt.Figure:
 
     # Configure axes
     ax.set_xscale("log")
-    ax.set_xlim(0.7, max_speedup * 1.8)  # More room on right for labels
+    label_extent = max_speedup * (1 + LABEL_PAD)
+    ax.set_xlim(0.7, label_extent * (1 + RIGHT_PAD))
 
     total_height = n_categories * group_height + (n_categories - 1) * group_gap
     ax.set_ylim(-0.3, total_height + 0.3)
@@ -358,7 +364,8 @@ def create_chart(results: list[BenchmarkResult]) -> plt.Figure:
     labels = [DEVICE_NAMES.get(d, d) for d in devices]
 
     # Lock subplot geometry before positioning legend/title so we can derive true axis bounds
-    plt.subplots_adjust(top=0.84, bottom=0.04, left=0.26, right=0.94)
+    # Pull the right edge in a bit so long labels don't run into the legend.
+    plt.subplots_adjust(top=0.84, bottom=0.04, left=0.26, right=0.78)
 
     # Legend inset from the figure's bottom-right corner by a fixed pixel cushion
     pad_px = 12

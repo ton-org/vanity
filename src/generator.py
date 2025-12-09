@@ -707,15 +707,16 @@ def build_kernel_config(cli: CliConfig, owner_raw: bytes) -> Tuple[KernelConfig,
     # We must compute CRC whenever either CRC bytes are constrained or there is
     # a case-insensitive digit that overlaps CRC bits (digits 45..47).
     need_crc = int(
-        (prefix_mask[34] | prefix_mask[35]) != 0
-        or any(b >= 270 for b in ci_bitpos)
+        (prefix_mask[34] | prefix_mask[35]) != 0 or any(b >= 270 for b in ci_bitpos)
     )
 
     # First hash byte sweep domain: all values compatible with forced bits from
     # the start pattern that land in the first hash byte.
     fixed_mask = free_mask
     fixed_val = free_val
-    hash0_values = [b for b in range(256) if (b & fixed_mask) == (fixed_val & fixed_mask)]
+    hash0_values = [
+        b for b in range(256) if (b & fixed_mask) == (fixed_val & fixed_mask)
+    ]
     hash0_count = len(hash0_values)
     # Pad to 256 entries for a fixed-size __constant array in the kernel.
     if hash0_count < 256:
@@ -1070,7 +1071,9 @@ def device_thread(
                 idx = int(res_host[slot * RES_SLOT_WORDS + 1])
                 variant_idx = int(res_host[slot * RES_SLOT_WORDS + 2])
                 hash0 = int(res_host[slot * RES_SLOT_WORDS + 3] & 0xFF)
-                ok, reason = process_hit(ctx, base_salt, iter_idx, idx, variant_idx, hash0)
+                ok, reason = process_hit(
+                    ctx, base_salt, iter_idx, idx, variant_idx, hash0
+                )
                 if not ok:
                     print(
                         f"Validation failed: {reason} (iter={iter_idx}, idx={idx}, variant={variant_idx})",

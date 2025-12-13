@@ -79,11 +79,18 @@ class KernelConfig:
     code_prefix_bytes: bytes
     code_state_base: List[int]
     crc16_table: List[int]
+    crc16_delta_pos2: List[int]
     fixed_prefix_lengths: List[Optional[int]]
     special_variants: List[Optional[Tuple[int, int]]]
     ci_bitpos: List[int]
     ci_alt0: List[int]
     ci_alt1: List[int]
+    ci_const_bitpos: List[int]
+    ci_const_alt0: List[int]
+    ci_const_alt1: List[int]
+    ci_var_bitpos: List[int]
+    ci_var_alt0: List[int]
+    ci_var_alt1: List[int]
 
 
 @dataclass
@@ -292,6 +299,23 @@ def crc16(data: bytes, table: Sequence[int]) -> int:
     for b in data:
         crc = ((crc << 8) ^ table[((crc >> 8) ^ b) & 0xFF]) & 0xFFFF
     return crc
+
+
+def crc16_delta_pos2_34(table: Sequence[int]) -> List[int]:
+    """CRC16 deltas for 34-byte messages where only byte[2] varies.
+
+    For each v in 0..255, delta[v] = crc16(msg) where msg is 34 bytes of zeros
+    except msg[2] = v, with init=0 and no final xor. This enables computing:
+        crc(msg_with_hash0=v) = crc_base ^ delta[v]
+    where crc_base is crc16(msg_with_hash0=0) for the fixed part of the message.
+    """
+
+    msg = bytearray(34)
+    out: List[int] = []
+    for v in range(256):
+        msg[2] = v
+        out.append(crc16(bytes(msg), table))
+    return out
 
 
 def compute_hit_prob(kernel_cfg: "KernelConfig") -> float:
@@ -701,14 +725,42 @@ def build_kernel_config(cli: CliConfig, owner_raw: bytes) -> Tuple[KernelConfig,
             set_mask_bit(prefix_mask, prefix_val, bit_index, bit)
 
     prefix_pos = [i for i, m in enumerate(prefix_mask) if m]
-    # Never use byte 2 (first hash byte) in early non-CRC checks; it is swept.
-    prefix_pos_nocrc = [i for i in prefix_pos if i < 34 and i != 2]
+    # Host-side invariant: early non-CRC prefix checks never include bytes 0..2
+    # (flags/workchain + swept hash0) and never include CRC bytes 34..35.
+    prefix_pos_nocrc = [i for i in prefix_pos if 3 <= i < 34]
+    assert all(3 <= i < 34 for i in prefix_pos_nocrc), "prefix_pos_nocrc invariant violated"
+
+    def ci_touches_bytes(bitpos: int, interesting: set[int]) -> bool:
+        # CI windows are exactly 6 bits: [bitpos .. bitpos+5], spanning at most 2 bytes.
+        b0 = bitpos >> 3
+        b1 = (bitpos + 5) >> 3
+        return (b0 in interesting) or (b1 in interesting)
 
     # We must compute CRC whenever either CRC bytes are constrained or there is
-    # a case-insensitive digit that overlaps CRC bits (digits 45..47).
+    # a case-insensitive digit that overlaps CRC bytes.
     need_crc = int(
-        (prefix_mask[34] | prefix_mask[35]) != 0 or any(b >= 270 for b in ci_bitpos)
+        (prefix_mask[34] | prefix_mask[35]) != 0
+        or any(ci_touches_bytes(b, {34, 35}) for b in ci_bitpos)
     )
+
+    # Split CI digits into those that are constant for a variant (do not depend
+    # on hash0 or CRC bytes) vs sweep-dependent (touch byte 2 and/or bytes 34-35).
+    ci_const_bitpos: List[int] = []
+    ci_const_alt0: List[int] = []
+    ci_const_alt1: List[int] = []
+    ci_var_bitpos: List[int] = []
+    ci_var_alt0: List[int] = []
+    ci_var_alt1: List[int] = []
+
+    for b, a0, a1 in zip(ci_bitpos, ci_alt0, ci_alt1):
+        if ci_touches_bytes(b, {2, 34, 35}):
+            ci_var_bitpos.append(b)
+            ci_var_alt0.append(a0)
+            ci_var_alt1.append(a1)
+        else:
+            ci_const_bitpos.append(b)
+            ci_const_alt0.append(a0)
+            ci_const_alt1.append(a1)
 
     # First hash byte sweep domain: all values compatible with forced bits from
     # the start pattern that land in the first hash byte.
@@ -752,6 +804,7 @@ def build_kernel_config(cli: CliConfig, owner_raw: bytes) -> Tuple[KernelConfig,
     code_state_base = sha256_compress_block(code_prefix_bytes)
 
     crc_table = crc16_table()
+    crc_delta_pos2 = crc16_delta_pos2_34(crc_table)
 
     kernel_cfg = KernelConfig(
         flags_hi=flags_byte,
@@ -773,11 +826,18 @@ def build_kernel_config(cli: CliConfig, owner_raw: bytes) -> Tuple[KernelConfig,
         code_prefix_bytes=code_prefix_bytes,
         code_state_base=code_state_base,
         crc16_table=crc_table,
+        crc16_delta_pos2=crc_delta_pos2,
         fixed_prefix_lengths=fixed_prefix_lengths,
         special_variants=special_variants,
         ci_bitpos=ci_bitpos,
         ci_alt0=ci_alt0,
         ci_alt1=ci_alt1,
+        ci_const_bitpos=ci_const_bitpos,
+        ci_const_alt0=ci_const_alt0,
+        ci_const_alt1=ci_const_alt1,
+        ci_var_bitpos=ci_var_bitpos,
+        ci_var_alt0=ci_var_alt0,
+        ci_var_alt1=ci_var_alt1,
     )
 
     # Start string alignment inside the friendly address
@@ -807,6 +867,10 @@ def render_kernel(kernel_cfg: KernelConfig) -> str:
     )
     repl("<<CRC16_TABLE>>", ", ".join(str(c) for c in kernel_cfg.crc16_table))
     repl(
+        "<<CRC16_DELTA_POS2>>",
+        ", ".join(str(c) for c in kernel_cfg.crc16_delta_pos2),
+    )
+    repl(
         "<<PREFIX_W_MATRIX>>",
         ",\n    ".join(
             "{ " + ", ".join(str(w) for w in row) + " }"
@@ -822,10 +886,14 @@ def render_kernel(kernel_cfg: KernelConfig) -> str:
     repl("<<N_ACTIVE_NOCRC>>", str(len(kernel_cfg.prefix_pos_nocrc)))
     repl("<<PREFIX_POS>>", ", ".join(str(i) for i in kernel_cfg.prefix_pos))
     repl("<<PREFIX_POS_NOCRC>>", ", ".join(str(i) for i in kernel_cfg.prefix_pos_nocrc))
-    repl("<<N_CASE_INSENSITIVE>>", str(len(kernel_cfg.ci_bitpos)))
-    repl("<<CASE_BITPOS>>", ", ".join(str(b) for b in kernel_cfg.ci_bitpos))
-    repl("<<CASE_ALT0>>", ", ".join(str(v) for v in kernel_cfg.ci_alt0))
-    repl("<<CASE_ALT1>>", ", ".join(str(v) for v in kernel_cfg.ci_alt1))
+    repl("<<N_CASE_CONST>>", str(len(kernel_cfg.ci_const_bitpos)))
+    repl("<<N_CASE_VAR>>", str(len(kernel_cfg.ci_var_bitpos)))
+    repl("<<CASE_CONST_BITPOS>>", ", ".join(str(b) for b in kernel_cfg.ci_const_bitpos))
+    repl("<<CASE_CONST_ALT0>>", ", ".join(str(v) for v in kernel_cfg.ci_const_alt0))
+    repl("<<CASE_CONST_ALT1>>", ", ".join(str(v) for v in kernel_cfg.ci_const_alt1))
+    repl("<<CASE_VAR_BITPOS>>", ", ".join(str(b) for b in kernel_cfg.ci_var_bitpos))
+    repl("<<CASE_VAR_ALT0>>", ", ".join(str(v) for v in kernel_cfg.ci_var_alt0))
+    repl("<<CASE_VAR_ALT1>>", ", ".join(str(v) for v in kernel_cfg.ci_var_alt1))
     repl("<<N_STATEINIT_VARIANTS>>", str(len(kernel_cfg.stateinit_variants)))
     repl("<<STATEINIT_PREFIX_MAX_LEN>>", str(kernel_cfg.stateinit_prefix_max_len))
     repl(

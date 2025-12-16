@@ -278,6 +278,11 @@ __constant uchar  CASE_VAR_ALT1[N_CASE_VAR] = { <<CASE_VAR_ALT1>> };
 __constant ushort CRC16_TABLE[256] = { <<CRC16_TABLE>> };
 // CRC16 deltas for 34-byte message where only byte index 2 changes.
 __constant ushort CRC16_DELTA_POS2[256] = { <<CRC16_DELTA_POS2>> };
+// Precomputed CRC16 after processing [FLAGS_HI, FLAGS_LO, 0] - saves 3 updates per candidate
+#define CRC_PARTIAL <<CRC_PARTIAL>>
+// Compile-time flags for CRC byte constraints (avoids runtime PREFIX_MASK[x] && checks)
+#define CRC_HI_CONSTRAINED <<CRC_HI_CONSTRAINED>>
+#define CRC_LO_CONSTRAINED <<CRC_LO_CONSTRAINED>>
 
 __constant uchar STATEINIT_PREFIX_LENS[N_STATEINIT_VARIANTS] = { <<STATEINIT_PREFIX_LENS>> };
 // STATEINIT_PREFIX_VARIANTS is unused in the optimized kernel logic.
@@ -304,14 +309,36 @@ inline ushort crc16_update(const ushort crc, const uchar b)
     return (ushort)((crc << 8) ^ CRC16_TABLE[((crc >> 8) ^ b) & 0xff]);
 }
 
-inline uchar repr_byte(const int i, const uchar hash0, const uint *main_hash, const ushort crc)
+// Specialized repr_byte for ci_const checks: byte index is NEVER 2, 34, or 35.
+// Can only be 0, 1, or 3-33. Reduces branching.
+inline uchar repr_byte_const(const int i, const uint *main_hash)
 {
-    if (i == 0) return (uchar)FLAGS_HI;
-    if (i == 1) return (uchar)FLAGS_LO;
+    // Fast path: bytes 3-33 (hash bytes 1-31) - most common case
+    if (i >= 3) {
+        return GET_BYTE_BE_ARRAY(main_hash, i - 2);
+    }
+    // Bytes 0-1 are flags (constant)
+    return (i == 0) ? (uchar)FLAGS_HI : (uchar)FLAGS_LO;
+}
+
+// Specialized repr_byte for ci_var checks in NEED_CRC=0 path.
+// Byte index touches byte 2 but never 34 or 35.
+inline uchar repr_byte_var_nocrc(const int i, const uchar hash0, const uint *main_hash)
+{
     if (i == 2) return hash0;
-    if (i < 34) return GET_BYTE_BE_ARRAY(main_hash, i - 2);
-    if (i == 34) return (uchar)(crc >> 8);
-    return (uchar)(crc & 0xffu);
+    if (i >= 3) return GET_BYTE_BE_ARRAY(main_hash, i - 2);
+    return (i == 0) ? (uchar)FLAGS_HI : (uchar)FLAGS_LO;
+}
+
+// Specialized repr_byte for ci_var checks in NEED_CRC=1 path.
+// Byte index touches byte 2 and/or bytes 34-35.
+inline uchar repr_byte_var_crc(const int i, const uchar hash0, const uint *main_hash, const ushort crc)
+{
+    // Most likely cases for ci_var in CRC path: bytes near 2 or near 34-35
+    if (i == 2) return hash0;
+    if (i >= 34) return (i == 34) ? (uchar)(crc >> 8) : (uchar)(crc & 0xffu);
+    if (i >= 3) return GET_BYTE_BE_ARRAY(main_hash, i - 2);
+    return (i == 0) ? (uchar)FLAGS_HI : (uchar)FLAGS_LO;
 }
 
 __kernel void hash_main(
@@ -446,6 +473,7 @@ __kernel void hash_main(
             }
 
             // Case-insensitivity constraints that do not depend on hash0 or CRC.
+            // Uses specialized repr_byte_const which knows byte_idx is never 2, 34, or 35.
 #if N_CASE_CONST > 0
             if (ok) {
                 #pragma unroll
@@ -454,10 +482,10 @@ __kernel void hash_main(
                     int byte_idx = (int)(bit >> 3);
                     int bit_in_byte = 7 - (int)(bit & 7);
 
-                    uchar byte0 = repr_byte(byte_idx, (uchar)0, main_hash, (ushort)0);
-                    uchar byte1 = (byte_idx + 1 < 36)
-                        ? repr_byte(byte_idx + 1, (uchar)0, main_hash, (ushort)0)
-                        : 0;
+                    // For ci_const, byte_idx is in [0,1] or [3,33], never 34+
+                    // So byte_idx + 1 is at most 34, always < 36 - no bounds check needed
+                    uchar byte0 = repr_byte_const(byte_idx, main_hash);
+                    uchar byte1 = repr_byte_const(byte_idx + 1, main_hash);
 
                     ushort comb = ((ushort)byte0 << 8) | (ushort)byte1;
                     uchar val6 = (uchar)((comb >> (bit_in_byte + 3)) & 0x3fu);
@@ -484,6 +512,7 @@ __kernel void hash_main(
                 int ok_local = 1;
 
                 // Case-insensitivity constraints that depend on hash0 (byte 2).
+                // Uses specialized repr_byte_var_nocrc which knows no CRC bytes involved.
         #if N_CASE_VAR > 0
                 if (ok_local) {
                     #pragma unroll
@@ -492,10 +521,10 @@ __kernel void hash_main(
                         int byte_idx = (int)(bit >> 3);
                         int bit_in_byte = 7 - (int)(bit & 7);
 
-                        uchar byte0 = repr_byte(byte_idx, hash0, main_hash, (ushort)0);
-                        uchar byte1 = (byte_idx + 1 < 36)
-                            ? repr_byte(byte_idx + 1, hash0, main_hash, (ushort)0)
-                            : 0;
+                        // For ci_var in NEED_CRC=0, bytes touch byte 2 but never 34/35
+                        // byte_idx can be 1, 2, or 3; byte_idx + 1 <= 4 < 36
+                        uchar byte0 = repr_byte_var_nocrc(byte_idx, hash0, main_hash);
+                        uchar byte1 = repr_byte_var_nocrc(byte_idx + 1, hash0, main_hash);
 
                         ushort comb = ((ushort)byte0 << 8) | (ushort)byte1;
                         uchar val6 = (uchar)((comb >> (bit_in_byte + 3)) & 0x3fu);
@@ -519,11 +548,9 @@ __kernel void hash_main(
                 }
             }
 #else  // NEED_CRC == 1
-            // Compute CRC base once with hash0=0, then sweep using XOR deltas.
-            ushort crc_base = 0;
-            crc_base = crc16_update(crc_base, (uchar)FLAGS_HI);
-            crc_base = crc16_update(crc_base, (uchar)FLAGS_LO);
-            crc_base = crc16_update(crc_base, (uchar)0);
+            // Compute CRC base using precomputed partial (FLAGS_HI, FLAGS_LO, 0).
+            // This saves 3 crc16_update calls per candidate.
+            ushort crc_base = (ushort)CRC_PARTIAL;
 
             #pragma unroll
             for (int k = 1; k < 32; k++) {
@@ -534,19 +561,30 @@ __kernel void hash_main(
             for (int t = 0; t < HASH0_COUNT; t++) {
                 uchar hash0 = HASH0_VALUES[t];
                 ushort crc = (ushort)(crc_base ^ CRC16_DELTA_POS2[(uint)hash0]);
-                uchar crc_hi = (uchar)(crc >> 8);
-                uchar crc_lo = (uchar)(crc & 0xffu);
 
                 int ok_local = 1;
 
                 // CRC-dependent byte-mask constraints: only bytes 34 and 35.
-                if (PREFIX_MASK[34] && ((crc_hi & PREFIX_MASK[34]) != PREFIX_VAL[34])) {
-                    ok_local = 0;
+                // Use compile-time checks to eliminate runtime PREFIX_MASK[x] && branches.
+        #if CRC_HI_CONSTRAINED
+                {
+                    uchar crc_hi = (uchar)(crc >> 8);
+                    if ((crc_hi & PREFIX_MASK[34]) != PREFIX_VAL[34]) {
+                        ok_local = 0;
+                    }
                 }
-                if (ok_local && PREFIX_MASK[35] && ((crc_lo & PREFIX_MASK[35]) != PREFIX_VAL[35])) {
-                    ok_local = 0;
+        #endif
+        #if CRC_LO_CONSTRAINED
+                if (ok_local) {
+                    uchar crc_lo = (uchar)(crc & 0xffu);
+                    if ((crc_lo & PREFIX_MASK[35]) != PREFIX_VAL[35]) {
+                        ok_local = 0;
+                    }
                 }
+        #endif
 
+                // Case-insensitivity constraints that depend on hash0/CRC.
+                // Uses specialized repr_byte_var_crc optimized for this path.
         #if N_CASE_VAR > 0
                 if (ok_local) {
                     #pragma unroll
@@ -555,9 +593,11 @@ __kernel void hash_main(
                         int byte_idx = (int)(bit >> 3);
                         int bit_in_byte = 7 - (int)(bit & 7);
 
-                        uchar byte0 = repr_byte(byte_idx, hash0, main_hash, crc);
-                        uchar byte1 = (byte_idx + 1 < 36)
-                            ? repr_byte(byte_idx + 1, hash0, main_hash, crc)
+                        uchar byte0 = repr_byte_var_crc(byte_idx, hash0, main_hash, crc);
+                        // For ci_var touching CRC, byte_idx can be up to 35
+                        // byte_idx + 1 can be 36, need bounds check
+                        uchar byte1 = (byte_idx < 35)
+                            ? repr_byte_var_crc(byte_idx + 1, hash0, main_hash, crc)
                             : 0;
 
                         ushort comb = ((ushort)byte0 << 8) | (ushort)byte1;

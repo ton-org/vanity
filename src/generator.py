@@ -80,6 +80,9 @@ class KernelConfig:
     code_state_base: List[int]
     crc16_table: List[int]
     crc16_delta_pos2: List[int]
+    crc_partial: int  # CRC16 of [FLAGS_HI, FLAGS_LO, 0] - precomputed for kernel
+    crc_hi_constrained: int  # 1 if PREFIX_MASK[34] != 0
+    crc_lo_constrained: int  # 1 if PREFIX_MASK[35] != 0
     fixed_prefix_lengths: List[Optional[int]]
     special_variants: List[Optional[Tuple[int, int]]]
     ci_bitpos: List[int]
@@ -807,6 +810,11 @@ def build_kernel_config(cli: CliConfig, owner_raw: bytes) -> Tuple[KernelConfig,
 
     crc_table = crc16_table()
     crc_delta_pos2 = crc16_delta_pos2_34(crc_table)
+    # Precompute CRC16 of [FLAGS_HI, FLAGS_LO, 0] to save 3 updates per candidate
+    crc_partial = crc16(bytes([flags_byte, wc_byte, 0]), crc_table)
+    # Compile-time flags for CRC byte constraints
+    crc_hi_constrained = 1 if prefix_mask[34] != 0 else 0
+    crc_lo_constrained = 1 if prefix_mask[35] != 0 else 0
 
     kernel_cfg = KernelConfig(
         flags_hi=flags_byte,
@@ -829,6 +837,9 @@ def build_kernel_config(cli: CliConfig, owner_raw: bytes) -> Tuple[KernelConfig,
         code_state_base=code_state_base,
         crc16_table=crc_table,
         crc16_delta_pos2=crc_delta_pos2,
+        crc_partial=crc_partial,
+        crc_hi_constrained=crc_hi_constrained,
+        crc_lo_constrained=crc_lo_constrained,
         fixed_prefix_lengths=fixed_prefix_lengths,
         special_variants=special_variants,
         ci_bitpos=ci_bitpos,
@@ -872,6 +883,9 @@ def render_kernel(kernel_cfg: KernelConfig) -> str:
         "<<CRC16_DELTA_POS2>>",
         ", ".join(str(c) for c in kernel_cfg.crc16_delta_pos2),
     )
+    repl("<<CRC_PARTIAL>>", str(kernel_cfg.crc_partial))
+    repl("<<CRC_HI_CONSTRAINED>>", str(kernel_cfg.crc_hi_constrained))
+    repl("<<CRC_LO_CONSTRAINED>>", str(kernel_cfg.crc_lo_constrained))
     repl(
         "<<PREFIX_W_MATRIX>>",
         ",\n    ".join(

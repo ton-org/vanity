@@ -728,7 +728,9 @@ def build_kernel_config(cli: CliConfig, owner_raw: bytes) -> Tuple[KernelConfig,
     # Host-side invariant: early non-CRC prefix checks never include bytes 0..2
     # (flags/workchain + swept hash0) and never include CRC bytes 34..35.
     prefix_pos_nocrc = [i for i in prefix_pos if 3 <= i < 34]
-    assert all(3 <= i < 34 for i in prefix_pos_nocrc), "prefix_pos_nocrc invariant violated"
+    assert all(3 <= i < 34 for i in prefix_pos_nocrc), (
+        "prefix_pos_nocrc invariant violated"
+    )
 
     def ci_touches_bytes(bitpos: int, interesting: set[int]) -> bool:
         # CI windows are exactly 6 bits: [bitpos .. bitpos+5], spanning at most 2 bytes.

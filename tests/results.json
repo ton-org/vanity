@@ -135,6 +135,40 @@
                     "timedOut": true
                 }
             ]
+        },
+        {
+            "title": "PR #34",
+            "timestamp": 1765879353.369,
+            "cases": [
+                {
+                    "name": "start 5 cs",
+                    "hits": 1447,
+                    "seconds": 19.676954984664917,
+                    "rate": 73.48698013117014,
+                    "timedOut": true
+                },
+                {
+                    "name": "start 5 ci",
+                    "hits": 5544,
+                    "seconds": 19.636559009552002,
+                    "rate": 282.2795988494555,
+                    "timedOut": true
+                },
+                {
+                    "name": "end 5 cs",
+                    "hits": 5468,
+                    "seconds": 19.60380721092224,
+                    "rate": 278.87440134353426,
+                    "timedOut": true
+                },
+                {
+                    "name": "end 6 ci",
+                    "hits": 5490,
+                    "seconds": 19.623944997787476,
+                    "rate": 279.70930414954097,
+                    "timedOut": true
+                }
+            ]
         }
     ],
     "NVIDIA GeForce RTX 4090": [
@@ -270,6 +304,40 @@
                     "hits": 92,
                     "seconds": 18.25980496406555,
                     "rate": 4.983623876546534,
+                    "timedOut": true
+                }
+            ]
+        },
+        {
+            "title": "PR #34",
+            "timestamp": 1765879999.213,
+            "cases": [
+                {
+                    "name": "start 6 cs",
+                    "hits": 272,
+                    "seconds": 18.274802684783936,
+                    "rate": 14.829161478478861,
+                    "timedOut": true
+                },
+                {
+                    "name": "start 6 ci",
+                    "hits": 2087,
+                    "seconds": 18.2116641998291,
+                    "rate": 114.5419757970046,
+                    "timedOut": true
+                },
+                {
+                    "name": "end 6 cs",
+                    "hits": 743,
+                    "seconds": 18.052062511444092,
+                    "rate": 41.1033365040482,
+                    "timedOut": true
+                },
+                {
+                    "name": "end 7 ci",
+                    "hits": 1638,
+                    "seconds": 18.06091570854187,
+                    "rate": 90.63770776726368,
                     "timedOut": true
                 }
             ]

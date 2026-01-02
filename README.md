@@ -138,7 +138,7 @@ See [Benchmarks](#benchmarks) for details.
 
 ## Optimizations
 
-**A detailed write-up covering all optimizations and the development process will be published soon.**
+Read the blog post: [TON Vanity: 286,000x faster vanity addresses](https://gusarich.com/blog/ton-vanity/)
 
 The key optimizations include:
 
